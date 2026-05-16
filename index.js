@@ -40,6 +40,16 @@ setupDB();
 
 const generateSlug = () => crypto.randomBytes(4).toString('hex');
 
+// URL Formatter: Fixes links without https://
+const getValidUrl = (url) => {
+    if (!url) return '#';
+    url = url.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return 'https://' + url;
+    }
+    return url;
+};
+
 // Telegram Bot Setup
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const userStates = {};
@@ -98,7 +108,7 @@ bot.on('message', async (msg) => {
     else if (state.step === 'AWAITING_CONTENT_LINK') {
         state.contentLink = msg.text.trim();
         state.step = 'AWAITING_TITLE';
-        bot.sendMessage(chatId, "Step 4: Main movie link peyechi.\n\nEkhon apnar pochhondo moto ekta *Title* likhun.\n*(Jodi apni chan DeepSeek AI theke auto generate hok, tahole shudhu `auto` likhe send korun)*", { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, "Step 4: Main movie link peyechi.\n\nEkhon apnar pochhondo moto ekta *Title* likhun.\n*(Jodi apni chan auto generate hok, tahole shudhu `auto` likhe send korun)*", { parse_mode: "Markdown" });
     }
     else if (state.step === 'AWAITING_TITLE') {
         let title = msg.text.trim();
@@ -191,6 +201,7 @@ const formatFakeViews = (realViews) => {
     return (total / 1000).toFixed(1) + "K";
 };
 
+// --- UI GENERATOR FUNCTIONS ---
 const getHeader = (title) => `
 <!DOCTYPE html>
 <html lang="en">
@@ -199,57 +210,97 @@ const getHeader = (title) => `
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>${title}</title>
     <style>
-        body { margin: 0; background: #080808; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 70px; overflow-x: hidden; }
-        .nav { padding: 15px 20px; background: rgba(0,0,0,0.95); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; position: sticky; top: 0; z-index: 50; box-shadow: 0 4px 20px rgba(0,0,0,0.7); }
-        .nav-logo { display: flex; align-items: center; gap: 10px; color: #e50914; text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        /* CSS Variables for Light/Dark Mode */
+        :root {
+            --bg: #080808;
+            --text: #ffffff;
+            --nav-bg: rgba(0,0,0,0.95);
+            --card-bg: #141414;
+            --border: #222;
+            --primary: #e50914;
+            --meta: #888;
+            --btn-alt: #2a2a2a;
+            --box-shadow: rgba(0,0,0,0.7);
+        }
+        [data-theme="light"] {
+            --bg: #f4f6f8;
+            --text: #111111;
+            --nav-bg: rgba(255,255,255,0.95);
+            --card-bg: #ffffff;
+            --border: #dddddd;
+            --primary: #e50914;
+            --meta: #555;
+            --btn-alt: #e0e0e0;
+            --box-shadow: rgba(0,0,0,0.1);
+        }
+
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 70px; overflow-x: hidden; transition: background 0.3s, color 0.3s; }
+        .nav { padding: 15px 20px; background: var(--nav-bg); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; box-shadow: 0 4px 20px var(--box-shadow); transition: background 0.3s; }
+        .nav-logo { display: flex; align-items: center; gap: 10px; color: var(--primary); text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         .nav-icons { display: flex; gap: 15px; align-items: center; }
         
-        .cast-icon { width: 24px; height: 24px; border: 2px solid #ccc; border-radius: 4px; position: relative; cursor: pointer; }
-        .cast-icon::after { content: ''; position: absolute; bottom: 2px; left: 2px; width: 8px; height: 8px; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; border-radius: 0 0 0 100%; }
-        .cast-icon::before { content: ''; position: absolute; bottom: 2px; left: 2px; width: 14px; height: 14px; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; border-radius: 0 0 0 100%; }
+        .theme-toggle { font-size: 22px; cursor: pointer; user-select: none; }
 
         .search { display: flex; width: 100%; max-width: 280px; }
-        .search input { padding: 10px 15px; width: 100%; border-radius: 25px 0 0 25px; border: 1px solid #333; outline: none; background: #1a1a1a; color: white; font-size: 14px; transition: border 0.3s; }
-        .search input:focus { border-color: #e50914; }
+        .search input { padding: 10px 15px; width: 100%; border-radius: 25px 0 0 25px; border: 1px solid var(--border); outline: none; background: var(--card-bg); color: var(--text); font-size: 14px; transition: border 0.3s; }
+        .search input:focus { border-color: var(--primary); }
         .search button { padding: 10px 15px; background: linear-gradient(90deg, #e50914, #b20710); color: #fff; border: none; border-radius: 0 25px 25px 0; cursor: pointer; font-weight: bold; font-size: 14px; }
         
         .container { padding: 20px; max-width: 1200px; margin: auto; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; padding: 20px 0; }
         
-        .card { background: #141414; border-radius: 12px; overflow: hidden; cursor: pointer; transition: all 0.3s; position: relative; border: 1px solid #2a2a2a; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(229,9,20,0.2); border-color: #e50914; }
+        .card { background: var(--card-bg); border-radius: 12px; overflow: hidden; cursor: pointer; transition: all 0.3s; position: relative; border: 1px solid var(--border); }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(229,9,20,0.2); border-color: var(--primary); }
         
         .card-img-wrapper { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; }
         .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
         .card:hover img { transform: scale(1.1); }
         
         .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); }
-        .progress-bar-fill { height: 100%; background: #e50914; }
+        .progress-bar-fill { height: 100%; background: var(--primary); }
         
         .badge { position: absolute; top: 10px; left: 10px; background: linear-gradient(45deg, #e50914, #ff4b4b); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 2; }
         
         .card-content { padding: 15px; position: relative; z-index: 2; }
-        .card-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #f1f1f1; }
-        .card-meta { font-size: 12px; color: #888; display: flex; justify-content: space-between; align-items: center; }
+        .card-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+        .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; }
 
-        .toast { position: fixed; bottom: -100px; left: 20px; background: rgba(0,0,0,0.95); border-left: 4px solid #e50914; padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px rgba(0,0,0,0.8); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; }
+        .toast { position: fixed; bottom: -100px; left: 20px; background: var(--nav-bg); color: var(--text); border-left: 4px solid var(--primary); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px var(--box-shadow); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; }
         .toast.show { bottom: 20px; }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
 
         @media (max-width: 600px) { 
             .nav { flex-direction: column; gap: 15px; padding: 15px; } 
-            .nav-icons { display: none; }
             .search { max-width: 100%; }
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
             .toast { left: 10px; right: 10px; text-align: center; justify-content: center; }
+            .nav-icons { position: absolute; top: 15px; right: 20px; }
         }
     </style>
+    <script>
+        // Init Theme
+        if(localStorage.getItem('theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+        function toggleTheme() {
+            const root = document.documentElement;
+            if (root.getAttribute('data-theme') === 'light') {
+                root.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'dark');
+                document.getElementById('themeIcon').innerText = '🌞';
+            } else {
+                root.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                document.getElementById('themeIcon').innerText = '🌙';
+            }
+        }
+    </script>
 </head>
 <body>
     <div class="nav">
         <a href="/" class="nav-logo">⚡ AURA STREAM</a>
         <div class="nav-icons">
-            <div class="cast-icon"></div>
+            <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
         </div>
         <form class="search" action="/" method="GET">
             <input type="text" name="q" placeholder="Search movies, shows...">
@@ -263,6 +314,9 @@ const getHeader = (title) => `
     </div>
 
     <script>
+        // Set correct icon on load
+        if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
+
         const names = ["Rahul", "Sakib", "John", "Priya", "Aman", "Rohan", "Alex", "Fatima", "Arif", "Hasan"];
         const cities = ["Dhaka", "Mumbai", "London", "Kolkata", "Delhi", "Toronto", "New York", "Sylhet"];
         const actions = ["started watching", "downloaded HD", "is streaming 4K"];
@@ -301,7 +355,7 @@ const renderCards = (posts) => {
                 <div class="card-title">${post.title}</div>
                 <div class="card-meta">
                     <span>👁 ${fakeViews}</span>
-                    <span style="background: #333; padding: 2px 6px; border-radius: 3px; font-size: 10px; color: #fff;">CC / EN</span>
+                    <span style="background: var(--btn-alt); padding: 2px 6px; border-radius: 3px; font-size: 10px; color: var(--text);">CC / EN</span>
                 </div>
             </div>
         </div>
@@ -326,23 +380,12 @@ app.get('/', async (req, res) => {
             ${getHeader('Aura Stream - Premium HD Movies')}
             <div class="container">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
-                    <h2 style="margin: 0; font-size: 22px; color: #fff; border-left: 4px solid #e50914; padding-left: 12px;">
+                    <h2 style="margin: 0; font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px;">
                         ${searchQuery ? 'Search Results' : '🔥 Continue Watching & Trending'}
                     </h2>
                 </div>
-                <div class="grid">${renderCards(posts) || '<p style="color:#666; text-align: center; width: 100%; margin-top: 50px;">No movies found.</p>'}</div>
+                <div class="grid">${renderCards(posts) || '<p style="color:var(--meta); text-align: center; width: 100%; margin-top: 50px;">No movies found.</p>'}</div>
             </div>
-            
-            <script>
-                // HOMEPAGE GLOBAL CLICK FOR ADSTERRA (1 time only per user)
-                document.body.addEventListener('click', function(e) {
-                    if (!localStorage.getItem('home_ad_clicked')) {
-                        localStorage.setItem('home_ad_clicked', 'true');
-                        // Use the latest post ad link or a generic fallback if needed
-                        window.open('/out/latest?type=ad', '_blank');
-                    }
-                });
-            </script>
             </body></html>
         `);
     } catch (err) {
@@ -369,26 +412,16 @@ app.get('/post/:slug', async (req, res) => {
         const countryName = getCountryName(countryCode);
 
         let lang = {
-            msg: "Choose a secure server below to start streaming immediately.",
-            modalTitle: "Sponsor Verification",
-            modalDesc: "To unlock the high-speed server and remove ads, a sponsor page has opened in a new tab. Please wait 30 seconds.",
-            watchBtn: "▶ Play Movie (Resume)",
-            dlBtn: "⬇ Download Quality",
-            waitText: "Authenticating Stream...",
-            secText: "seconds",
-            unlockBtn: "✅ Stream Unlocked! Play Now"
+            msg: "Click watch to verify on our sponsor page, then return here to start streaming.",
+            watchBtn: "▶ Play Movie",
+            dlBtn: "⬇ Download Quality"
         };
 
         if (countryCode === 'BD' || countryCode === 'IN') {
             lang = {
-                msg: "High speed e buffering chara dekhte nicher theke play korun.",
-                modalTitle: "Human Verification",
-                modalDesc: "Movie ti unlock korar jonno notun tab e sponsor page e 30 second wait korun. Ei page theke ber hoben na.",
+                msg: "High speed e dekhte play button e click korun. Sponsor page e 30 sec wait kore back ashun, video chalu hobe.",
                 watchBtn: "▶ Ekhani Play Korun",
-                dlBtn: "⬇ Download Korun",
-                waitText: "Server Connect Hocche...",
-                secText: "second",
-                unlockBtn: "✅ Video Ready! Play Korun"
+                dlBtn: "⬇ Download Korun"
             };
         }
 
@@ -399,63 +432,48 @@ app.get('/post/:slug', async (req, res) => {
         res.send(`
             ${getHeader(post.title)}
             <style>
-                @keyframes slowZoom {
-                    0% { transform: scale(1); }
-                    50% { transform: scale(1.05); }
-                    100% { transform: scale(1); }
-                }
-                .hero-bg {
-                    width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); 
-                    animation: slowZoom 20s infinite ease-in-out;
-                }
-                .play-pulse {
-                    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                    width: 75px; height: 75px; background: rgba(229,9,20,0.9); border-radius: 50%; 
-                    display: flex; align-items: center; justify-content: center; cursor: pointer; 
-                    box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); animation: pulse 2s infinite; z-index: 10;
-                }
-                @keyframes pulse {
-                    0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); }
-                    70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); }
-                    100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); }
-                }
+                @keyframes slowZoom { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+                .hero-bg { width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); animation: slowZoom 20s infinite ease-in-out; }
+                .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: rgba(229,9,20,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); animation: pulse 2s infinite; z-index: 10; }
+                @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); } 70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); } 100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); } }
+                
+                .msg-box { border-left: 3px solid var(--primary); padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }
             </style>
 
             <div class="container">
-                <div style="max-width: 850px; margin: 0 auto; background: #111; border-radius: 12px; border: 1px solid #222; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+                <div style="max-width: 850px; margin: 0 auto; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 10px 40px var(--box-shadow);">
                     
-                    <div style="position: relative; width: 100%; background: #000; border-bottom: 3px solid #e50914; overflow: hidden;">
+                    <div style="position: relative; width: 100%; background: #000; border-bottom: 3px solid var(--primary); overflow: hidden;">
                         <img src="${getImgSrc(post.thumbnail)}" class="hero-bg">
-                        
                         <div class="play-pulse" onclick="playMovie()">
                             <div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 22px solid white; margin-left: 6px;"></div>
                         </div>
-
                         <div style="position: absolute; top: 15px; left: 15px; background: linear-gradient(90deg, #e50914, #ff4b4b); padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
                             🔥 Top #1 in ${countryName}
                         </div>
                     </div>
 
                     <div style="padding: 25px;">
-                        <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: #fff;">${post.title}</h1>
+                        <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: var(--text);">${post.title}</h1>
                         
-                        <div style="display: flex; gap: 12px; margin-bottom: 20px; color: #ccc; font-size: 13px; flex-wrap: wrap; align-items: center;">
-                            <span style="background: #222; padding: 6px 15px; border-radius: 20px;">👁 ${uiFakeViews} Views</span>
+                        <div style="display: flex; gap: 12px; margin-bottom: 20px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
+                            <span style="background: var(--btn-alt); padding: 6px 15px; border-radius: 20px;">👁 ${uiFakeViews} Views</span>
                             <span style="color: #4caf50; font-weight: bold;">98% Match</span>
-                            <span style="border: 1px solid #666; padding: 2px 6px; border-radius: 3px;">1080p HD</span>
-                            <span style="border: 1px solid #666; padding: 2px 6px; border-radius: 3px;">CC / Audio: EN, HI, BN</span>
+                            <span style="border: 1px solid var(--meta); padding: 2px 6px; border-radius: 3px;">1080p HD</span>
                         </div>
 
-                        <p style="color: #999; margin-bottom: 25px; font-size: 15px; line-height: 1.5; border-left: 3px solid #e50914; padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px;">
-                            ${lang.msg} <br><span style="color: #666; font-size: 12px;">📅 Last Updated: ${today}</span>
-                        </p>
+                        <div id="statusBox" class="msg-box">
+                            <p style="color: var(--meta); margin: 0; font-size: 15px; line-height: 1.5;" id="statusText">
+                                ${lang.msg} <br><span style="color: var(--meta); font-size: 12px;">📅 Last Updated: ${today}</span>
+                            </p>
+                        </div>
                         
                         <div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 20px;">
-                            <button onclick="playMovie()" style="padding: 18px; background: white; color: black; border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                                <div style="width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 14px solid black;"></div>
-                                ${lang.watchBtn}
+                            <button id="mainBtn" onclick="playMovie()" style="padding: 18px; background: var(--text); color: var(--bg); border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                                <div style="width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 14px solid var(--bg);"></div>
+                                <span id="btnText">${lang.watchBtn}</span>
                             </button>
-                            <button onclick="playMovie()" style="padding: 16px; background: #2a2a2a; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer;">
+                            <button onclick="playMovie()" style="padding: 16px; background: var(--btn-alt); color: var(--text); border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer;">
                                 ${lang.dlBtn}
                             </button>
                         </div>
@@ -463,82 +481,66 @@ app.get('/post/:slug', async (req, res) => {
                 </div>
 
                 <div style="margin-top: 40px;">
-                    <h3 style="font-size: 22px; color: #fff; border-left: 4px solid #e50914; padding-left: 12px; margin-bottom: 20px;">More Like This</h3>
+                    <h3 style="font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px; margin-bottom: 20px;">More Like This</h3>
                     <div class="grid">${recommendedHtml}</div>
                 </div>
             </div>
-
-            <div id="adModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
-                <div style="background: #111; padding: 35px; border-radius: 16px; width: 100%; max-width: 420px; text-align: center; border: 1px solid #333; box-shadow: 0 10px 40px rgba(229,9,20,0.4);">
-                    <div style="width: 55px; height: 55px; border: 4px solid #e50914; border-top: 4px solid transparent; border-radius: 50%; margin: 0 auto 20px auto; animation: spin 1s linear infinite;"></div>
-                    <h2 style="color: #fff; margin-bottom: 12px; font-size: 22px;">${lang.modalTitle}</h2>
-                    <p style="color: #aaa; font-size: 15px; margin-bottom: 25px; line-height: 1.5;">${lang.modalDesc}</p>
-                    
-                    <div id="timerText" style="font-size: 16px; color: #ccc; margin-bottom: 25px; background: #1a1a1a; padding: 20px; border-radius: 10px; border: 1px solid #333;">
-                        ${lang.waitText} <br><span id="countdown" style="color: #e50914; font-size: 38px; font-weight: bold; display: inline-block; margin-top: 10px;">30</span>
-                    </div>
-                    
-                    <button id="unlockBtn" style="display: none; width: 100%; padding: 18px; background: linear-gradient(90deg, #28a745, #218838); color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(40,167,69,0.3);">
-                        ${lang.unlockBtn}
-                    </button>
-                </div>
-            </div>
-
-            <style>
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            </style>
 
             <script>
                 const slug = '${shareSlug}';
                 const adUrl = '/out/' + slug + '?type=ad';
                 const movieUrl = '/out/' + slug + '?type=content';
 
-                // GLOBAL CLICK FOR POST PAGE (Triggers on first click ANYWHERE on the page)
-                document.body.addEventListener('click', function(e) {
-                    if(!localStorage.getItem('post_global_click_' + slug) && !e.target.closest('#adModal')) {
-                        localStorage.setItem('post_global_click_' + slug, 'true');
-                        // Open Adsterra in New Tab
-                        window.open(adUrl, '_blank');
+                // Evaluate the status whenever the page is loaded/shown
+                function checkStatus() {
+                    const adStatus = localStorage.getItem('ad_status_' + slug);
+                    const btnText = document.getElementById('btnText');
+                    const statusText = document.getElementById('statusText');
+                    
+                    if (adStatus && adStatus !== 'unlocked') {
+                        const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
+                        if (timePassed >= 30) {
+                            localStorage.setItem('ad_status_' + slug, 'unlocked');
+                            btnText.innerText = "✅ Movie Unlocked! Play Now";
+                            statusText.innerHTML = "<span style='color: #4caf50; font-weight:bold;'>Verification complete! Click the button to watch.</span>";
+                        } else {
+                            btnText.innerText = "⏳ Verification in progress...";
+                        }
+                    } else if (adStatus === 'unlocked') {
+                        btnText.innerText = "✅ Movie Unlocked! Play Now";
+                        statusText.innerHTML = "<span style='color: #4caf50; font-weight:bold;'>Ready to play!</span>";
                     }
-                });
+                }
+
+                // Check on load and when returning to the tab
+                window.onload = checkStatus;
+                document.addEventListener('visibilitychange', () => { if (!document.hidden) checkStatus(); });
 
                 function playMovie() {
-                    const adSeen = localStorage.getItem('ad_seen_' + slug);
+                    const adStatus = localStorage.getItem('ad_status_' + slug);
 
-                    if (!adSeen) {
-                        // Mark ad as seen for this movie
-                        localStorage.setItem('ad_seen_' + slug, 'true');
-                        
-                        // Show the modal
-                        document.getElementById('adModal').style.display = 'flex';
-                        
-                        // Open Adsterra in New Tab
-                        window.open(adUrl, '_blank');
-                        
-                        let timeLeft = 30;
-                        const counterEl = document.getElementById('countdown');
-                        const timerText = document.getElementById('timerText');
-                        const unlockBtn = document.getElementById('unlockBtn');
-                        
-                        const timer = setInterval(() => {
-                            timeLeft--;
-                            if(timeLeft > 0) {
-                                counterEl.innerText = timeLeft;
-                            } else {
-                                clearInterval(timer);
-                                timerText.style.display = 'none';
-                                document.querySelector('.fa-spinner')?.remove(); 
-                                unlockBtn.style.display = 'block';
-                                
-                                // WHEN CLICKING THE UNLOCKED BUTTON: Open movie in SAME tab
-                                unlockBtn.onclick = function() {
-                                    window.location.href = movieUrl;
-                                }
-                            }
+                    if (!adStatus) {
+                        // First click - Send to Ad in the SAME TAB
+                        localStorage.setItem('ad_status_' + slug, Date.now());
+                        document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
+                        setTimeout(() => {
+                            window.location.href = adUrl; // Redirects SAME TAB
                         }, 1000);
+                        
+                    } else if (adStatus !== 'unlocked') {
+                        // They pressed back, but check time
+                        const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
+                        if (timePassed < 30) {
+                            const timeLeft = Math.ceil(30 - timePassed);
+                            alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
+                            window.location.href = adUrl; // Send them back to ad
+                        } else {
+                            localStorage.setItem('ad_status_' + slug, 'unlocked');
+                            window.location.href = movieUrl; // SAME TAB movie link
+                        }
                     } else {
-                        // IF ALREADY SEEN: Open movie in SAME tab immediately
-                        window.location.href = movieUrl;
+                        // Already unlocked
+                        window.location.href = movieUrl; // SAME TAB movie link
                     }
                 }
             </script>
@@ -550,6 +552,7 @@ app.get('/post/:slug', async (req, res) => {
     }
 });
 
+// URL formatting happens here before redirecting!
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
     const type = req.query.type;
@@ -564,7 +567,10 @@ app.get('/out/:slug', async (req, res) => {
         if (result.rows.length > 0) {
             const post = result.rows[0];
             await pool.query("UPDATE posts SET clicks = clicks + 1 WHERE id = $1", [post.id]);
-            res.redirect(type === 'ad' ? post.ad_link : post.content_link);
+            
+            // Format URL properly before redirecting
+            const targetUrl = type === 'ad' ? post.ad_link : post.content_link;
+            res.redirect(getValidUrl(targetUrl));
         } else {
             res.status(404).send("Link not found");
         }
