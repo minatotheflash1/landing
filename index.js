@@ -43,6 +43,15 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 // Memory to store user steps temporarily
 const userStates = {};
 
+// Helper function to determine image source securely
+const getImgSrc = (thumbnail) => {
+    if (!thumbnail) return '';
+    if (thumbnail.startsWith('http://') || thumbnail.startsWith('https://')) {
+        return thumbnail;
+    }
+    return `/image/${thumbnail}`;
+};
+
 // Admin UI - Main Menu
 const sendMainMenu = (chatId) => {
     const options = {
@@ -59,7 +68,7 @@ const sendMainMenu = (chatId) => {
 
 // Start Command
 bot.onText(/\/start/, (msg) => {
-    delete userStates[msg.chat.id]; // reset state on start
+    delete userStates[msg.chat.id]; 
     sendMainMenu(msg.chat.id);
 });
 
@@ -67,31 +76,42 @@ bot.onText(/\/start/, (msg) => {
 bot.onText(/\/addpost/, (msg) => {
     const chatId = msg.chat.id;
     userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
-    bot.sendMessage(chatId, "Step 1: Thumbnail URL upload korun ba send korun:");
+    bot.sendMessage(chatId, "Step 1: Movie er chobi upload (photo send) korun ba thumbnail URL send korun:");
 });
 
-// Handle Interactive Messages for Bot
+// Handle Interactive Messages for Bot (Accepts both photo and text)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text;
 
-    // Ignore if no state or if message is a command
-    if (!userStates[chatId] || !text || text.startsWith('/')) return;
+    if (!userStates[chatId]) return;
+    if (msg.text && msg.text.startsWith('/')) return;
 
     const state = userStates[chatId];
 
     if (state.step === 'AWAITING_THUMBNAIL') {
-        state.thumbnail = text.trim();
+        if (msg.photo && msg.photo.length > 0) {
+            // User uploaded a direct picture file
+            const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
+            state.thumbnail = photo.file_id;
+        } else if (msg.text) {
+            // User pasted a text URL instead
+            state.thumbnail = msg.text.trim();
+        } else {
+            return bot.sendMessage(chatId, "Boss, doya kore ekta chobi upload korun ba text akare thumbnail URL send korun.");
+        }
+
         state.step = 'AWAITING_AD_LINK';
-        bot.sendMessage(chatId, "Step 2: Thumbnail peyechi. Ekhon apnar Adsterra link send korun:");
+        bot.sendMessage(chatId, "Step 2: Thumbnail chobi peyechi. Ekhon apnar Adsterra link send korun:");
     } 
     else if (state.step === 'AWAITING_AD_LINK') {
-        state.adLink = text.trim();
+        if (!msg.text) return bot.sendMessage(chatId, "Doya kore text akare Adsterra link send korun.");
+        state.adLink = msg.text.trim();
         state.step = 'AWAITING_CONTENT_LINK';
         bot.sendMessage(chatId, "Step 3: Adsterra link peyechi. Ekhon main movie link upload korun:");
     } 
     else if (state.step === 'AWAITING_CONTENT_LINK') {
-        state.contentLink = text.trim();
+        if (!msg.text) return bot.sendMessage(chatId, "Doya kore text akare main movie link send korun.");
+        state.contentLink = msg.text.trim();
         bot.sendMessage(chatId, "Shob data peyechi. DeepSeek theke cinematic title generate kora hocche, ektu opekkha korun...");
 
         try {
@@ -114,7 +134,6 @@ bot.on('message', async (msg) => {
             
             bot.sendMessage(chatId, `Post Live!\n\nTitle: ${title}\nLink: ${postUrl}`);
             
-            // Clear state and show menu
             delete userStates[chatId];
             sendMainMenu(chatId);
 
@@ -140,7 +159,7 @@ bot.on('callback_query', async (callbackQuery) => {
     
     } else if (data === "add_post") {
         userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
-        bot.sendMessage(chatId, "Step 1: Thumbnail URL upload korun ba send korun:");
+        bot.sendMessage(chatId, "Step 1: Movie er chobi upload (photo send) korun ba thumbnail URL send korun:");
     
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
@@ -260,7 +279,7 @@ app.get('/', async (req, res) => {
         if (posts.length > 0 && !searchQuery) {
             const featured = posts[0];
             heroHtml = `
-                <div class="hero" style="background-image: url('${featured.thumbnail}');">
+                <div class="hero" style="background-image: url('${getImgSrc(featured.thumbnail)}');">
                     <div class="hero-fade"></div>
                     <div class="hero-content">
                         <h1 class="hero-title">${featured.title}</h1>
@@ -272,7 +291,7 @@ app.get('/', async (req, res) => {
 
         let postsHtml = posts.map(post => `
             <div class="movie-card" onclick="window.location.href='/post/${post.id}'">
-                <img src="${post.thumbnail}" alt="poster" class="card-img">
+                <img src="${getImgSrc(post.thumbnail)}" alt="poster" class="card-img">
                 <div class="card-overlay">
                     <div class="card-title">${post.title}</div>
                     <a href="/post/${post.id}" class="card-link">Watch</a>
@@ -283,7 +302,6 @@ app.get('/', async (req, res) => {
         let contentTitle = searchQuery ? `Search Results for "${searchQuery}"` : "Recently Added";
         let emptyState = posts.length === 0 ? '<p style="color: #666; text-align: center; width: 100%; padding: 40px 0;">No content available matching your request. Please add content via Bot.</p>' : '';
 
-        // FIXED: Only inject ad redirect script if database has at least one post
         let adScript = '';
         if (posts.length > 0) {
             adScript = `
@@ -345,7 +363,7 @@ app.get('/post/:id', async (req, res) => {
             <div class="container">
                 <div class="player-container">
                     <h1 style="margin-bottom: 20px; font-size: 2rem;">${post.title}</h1>
-                    <img src="${post.thumbnail}" alt="Backdrop">
+                    <img src="${getImgSrc(post.thumbnail)}" alt="Backdrop">
                     <p style="margin-bottom: 20px; color: #ccc;">${languageMessage}</p>
                     
                     <div>
@@ -383,6 +401,23 @@ app.get('/post/:id', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).send("Server Error");
+    }
+});
+
+// SECURE PROXY ROUTE FOR DIRECT UPLOADED IMAGES
+app.get('/image/:file_id', async (req, res) => {
+    const { file_id } = req.params;
+    try {
+        const fileLink = await bot.getFileLink(file_id);
+        const response = await axios({
+            url: fileLink,
+            method: 'GET',
+            responseType: 'stream'
+        });
+        response.data.pipe(res);
+    } catch (err) {
+        console.error("Image Fetch Error:", err);
+        res.status(404).send("Image not found");
     }
 });
 
