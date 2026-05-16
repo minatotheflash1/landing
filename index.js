@@ -232,11 +232,29 @@ const getCountryName = (code) => {
     return countries[code] || "Your Region";
 };
 
-const formatFakeViews = (realViews) => {
-    const baseViews = 312400; 
+// ==========================================
+// DYNAMIC RANDOMIZER FUNCTIONS
+// ==========================================
+const formatFakeViews = (realViews, postId) => {
+    const seed = postId ? parseInt(postId) : 1;
+    // Generates a base view count between 150K and 950K that is always the same for a specific post
+    const baseViews = 150000 + ((seed * 8734) % 800000); 
     const total = baseViews + realViews;
     return (total / 1000).toFixed(1) + "K";
 };
+
+const getFakeRating = (postId) => {
+    const seed = postId ? parseInt(postId) : 1;
+    // Generates a rating between 4.3 and 4.9
+    return (4.3 + ((seed * 31) % 7) / 10).toFixed(1);
+};
+
+const getFakeMatch = (postId) => {
+    const seed = postId ? parseInt(postId) : 1;
+    // Generates a match percentage between 88% and 99%
+    return 88 + ((seed * 19) % 12);
+};
+
 
 // ==========================================
 // BULLETPROOF INVISIBLE OVERLAY BOOT SCRIPT
@@ -253,34 +271,23 @@ const getBootLogic = async () => {
                     const lastClicked = localStorage.getItem('boot_last_clicked');
                     const now = Date.now();
                     
-                    // 30 minutes = 1800000 milliseconds
                     if (!lastClicked || (now - parseInt(lastClicked)) > 1800000) {
-                        
-                        // Create Invisible Full-Screen Overlay
                         const overlay = document.createElement('div');
                         overlay.style.position = 'fixed';
                         overlay.style.top = '0';
                         overlay.style.left = '0';
                         overlay.style.width = '100vw';
                         overlay.style.height = '100vh';
-                        overlay.style.zIndex = '9999999'; // Stay on top of EVERYTHING
+                        overlay.style.zIndex = '9999999';
                         overlay.style.cursor = 'pointer';
                         
-                        // Attach the overlay to body
                         document.body.appendChild(overlay);
 
-                        // Capture the first click
                         overlay.addEventListener('click', function(e) {
                             e.preventDefault();
                             e.stopPropagation();
-                            
-                            // Save timestamp to localStorage
                             localStorage.setItem('boot_last_clicked', Date.now());
-                            
-                            // Open Adsterra in New Tab safely
                             window.open(bootLink, '_blank');
-                            
-                            // Remove overlay immediately so user can click actual site buttons
                             document.body.removeChild(overlay);
                         });
                     }
@@ -339,6 +346,7 @@ const getHeader = (title, metaTagsStr = "") => `
         .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); }
         .progress-bar-fill { height: 100%; background: var(--primary); }
         .badge { position: absolute; top: 10px; left: 10px; background: linear-gradient(45deg, #e50914, #ff4b4b); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 2; }
+        .rating { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #ffd700; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; backdrop-filter: blur(5px); z-index: 2; }
         
         .card-content { padding: 15px; position: relative; z-index: 2; }
         .card-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
@@ -444,13 +452,15 @@ const getHeader = (title, metaTagsStr = "") => `
 
 const renderCards = (posts) => {
     return posts.map(post => {
-        const fakeViews = formatFakeViews(post.views);
+        const fakeViews = formatFakeViews(post.views, post.id);
+        const fakeRating = getFakeRating(post.id);
         const postLink = post.slug ? post.slug : post.id; 
         const randomProgress = Math.floor(Math.random() * 60) + 20; 
         
         return `
         <div class="card" onclick="window.location.href='/post/${postLink}'">
             <div class="badge">4K ULTRA</div>
+            <div class="rating">⭐ ${fakeRating}</div>
             <div class="card-img-wrapper">
                 <img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">
                 <div class="progress-bar-bg">
@@ -536,7 +546,10 @@ app.get('/post/:slug', async (req, res) => {
             };
         }
 
-        const uiFakeViews = formatFakeViews(post.views);
+        const uiFakeViews = formatFakeViews(post.views, post.id);
+        const fakeRating = getFakeRating(post.id);
+        const fakeMatch = getFakeMatch(post.id);
+
         const shareSlug = post.slug ? post.slug : post.id;
         const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const postTags = post.tags ? post.tags.split(',') : ["HD", "Streaming", "Trending"];
@@ -588,7 +601,8 @@ app.get('/post/:slug', async (req, res) => {
 
                         <div style="display: flex; gap: 12px; margin-bottom: 20px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
                             <span style="background: var(--btn-alt); padding: 6px 15px; border-radius: 20px;">👁 ${uiFakeViews} Views</span>
-                            <span style="color: #4caf50; font-weight: bold;">98% Match</span>
+                            <span style="color: #4caf50; font-weight: bold;">${fakeMatch}% Match</span>
+                            <span style="color: #ffd700; font-weight: bold;">⭐ ${fakeRating} Rating</span>
                             <span style="border: 1px solid var(--meta); padding: 2px 6px; border-radius: 3px;">1080p HD</span>
                         </div>
 
