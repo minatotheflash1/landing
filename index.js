@@ -25,12 +25,14 @@ const setupDB = async () => {
                 thumbnail TEXT,
                 ad_link TEXT,
                 content_link TEXT,
+                tags TEXT,
                 views INT DEFAULT 0,
                 clicks INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;").catch(()=>{"ignore"});
+        await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tags TEXT;").catch(()=>{"ignore"});
         console.log("Database initialized successfully.");
     } catch (err) {
         console.error("DB Setup Error:", err);
@@ -40,7 +42,6 @@ setupDB();
 
 const generateSlug = () => crypto.randomBytes(4).toString('hex');
 
-// URL Formatter: Fixes links without https://
 const getValidUrl = (url) => {
     if (!url) return '#';
     url = url.trim();
@@ -111,31 +112,45 @@ bot.on('message', async (msg) => {
         bot.sendMessage(chatId, "Step 4: Main movie link peyechi.\n\nEkhon apnar pochhondo moto ekta *Title* likhun.\n*(Jodi apni chan auto generate hok, tahole shudhu `auto` likhe send korun)*", { parse_mode: "Markdown" });
     }
     else if (state.step === 'AWAITING_TITLE') {
-        let title = msg.text.trim();
-        const isAuto = title.toLowerCase() === 'auto';
+        let inputTitle = msg.text.trim();
+        const isAuto = inputTitle.toLowerCase() === 'auto';
         
-        bot.sendMessage(chatId, isAuto ? "DeepSeek theke auto title generate kora hocche..." : "Processing your post...");
+        bot.sendMessage(chatId, "DeepSeek API theke data generate kora hocche. Ektu opekkha korun...");
 
         try {
-            if (isAuto) {
-                const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
-                    model: "deepseek-chat",
-                    messages: [{ role: "user", content: "Generate a catchy movie title or streaming headline for a trending video (Max 6 words). Do not use quotes." }]
-                }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
+            let finalTitle = inputTitle;
+            let generatedTags = "HD, Premium, 4K, Watch Online, Trending"; 
 
-                title = aiResponse.data.choices[0].message.content.trim();
+            const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+                model: "deepseek-chat",
+                messages: [{ 
+                    role: "user", 
+                    content: `I am adding a movie/video. Generte a JSON object containing:
+                    1. "title": A catchy streaming headline (max 6 words). Only generate this if I say 'auto', otherwise return "${inputTitle}".
+                    2. "tags": 5 highly searched comma-separated SEO keywords (like Netflix, Action, Thriller, Free).
+                    Respond strictly in raw JSON without any markdown formatting. Example: {"title": "The Title", "tags": "Tag1, Tag2, Tag3"}` 
+                }]
+            }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
+
+            try {
+                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(/```json/g, '').replace(/```/g, '');
+                const parsedData = JSON.parse(rawJson);
+                if (isAuto && parsedData.title) finalTitle = parsedData.title;
+                if (parsedData.tags) generatedTags = parsedData.tags;
+            } catch (jsonErr) {
+                console.log("JSON Parse Error from DeepSeek, using fallback strings.");
             }
 
             const slug = generateSlug(); 
 
             await pool.query(
-                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link) VALUES ($1, $2, $3, $4, $5)",
-                [slug, title, state.thumbnail, state.adLink, state.contentLink]
+                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags) VALUES ($1, $2, $3, $4, $5, $6)",
+                [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags]
             );
 
             const postUrl = `${process.env.WEBSITE_URL}/post/${slug}`;
             
-            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${title}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Tags:* ${generatedTags}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
             delete userStates[chatId];
             sendMainMenu(chatId);
         } catch (error) {
@@ -158,21 +173,21 @@ bot.on('callback_query', async (callbackQuery) => {
         const stats = result.rows[0];
         bot.sendMessage(chatId, `📊 *REAL Statistics*\n\nTotal Movies: ${stats.total_posts}\nExact Views: ${stats.total_views || 0}\nExact Clicks: ${stats.total_clicks || 0}`, { parse_mode: "Markdown" });
     } else if (data === "manage_posts") {
-        const result = await pool.query("SELECT slug, title FROM posts ORDER BY id DESC LIMIT 5");
+        const result = await pool.query("SELECT id, title FROM posts ORDER BY id DESC LIMIT 5");
         if(result.rows.length === 0) return bot.sendMessage(chatId, "No posts available.");
         
         let inline_keyboard = result.rows.map(post => [
-            { text: `🗑 Del: ${post.title.substring(0,10)}`, callback_data: `del_${post.slug}` },
-            { text: `📊 Stats`, callback_data: `stat_${post.slug}` }
+            { text: `🗑 Del: ${post.title.substring(0,10)}`, callback_data: `del_${post.id}` },
+            { text: `📊 Stats`, callback_data: `stat_${post.id}` }
         ]);
         bot.sendMessage(chatId, "📁 Latest 5 Movies", { reply_markup: { inline_keyboard } });
     } else if (data.startsWith("del_")) {
-        const slug = data.replace("del_", "");
-        await pool.query("DELETE FROM posts WHERE slug = $1", [slug]);
+        const id = data.replace("del_", "");
+        await pool.query("DELETE FROM posts WHERE id = $1", [id]);
         bot.sendMessage(chatId, `✅ Post deleted successfully.`);
     } else if (data.startsWith("stat_")) {
-        const slug = data.replace("stat_", "");
-        const result = await pool.query("SELECT title, views, clicks FROM posts WHERE slug = $1", [slug]);
+        const id = data.replace("stat_", "");
+        const result = await pool.query("SELECT title, views, clicks FROM posts WHERE id = $1", [id]);
         if(result.rows.length > 0) {
             bot.sendMessage(chatId, `*Stats*\nTitle: ${result.rows[0].title}\nViews: ${result.rows[0].views}\nClicks: ${result.rows[0].clicks}`, { parse_mode: "Markdown" });
         }
@@ -191,7 +206,7 @@ app.get('/image/:file_id', async (req, res) => {
 });
 
 const getCountryName = (code) => {
-    const countries = { "BD": "Bangladesh", "IN": "India", "US": "USA", "GB": "UK" };
+    const countries = { "BD": "Bangladesh", "IN": "India", "US": "USA", "GB": "UK", "CA": "Canada", "AU": "Australia" };
     return countries[code] || "Your Region";
 };
 
@@ -202,43 +217,28 @@ const formatFakeViews = (realViews) => {
 };
 
 // --- UI GENERATOR FUNCTIONS ---
-const getHeader = (title) => `
+const getHeader = (title, metaTagsStr = "") => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    ${metaTagsStr}
     <title>${title}</title>
     <style>
-        /* CSS Variables for Light/Dark Mode */
         :root {
-            --bg: #080808;
-            --text: #ffffff;
-            --nav-bg: rgba(0,0,0,0.95);
-            --card-bg: #141414;
-            --border: #222;
-            --primary: #e50914;
-            --meta: #888;
-            --btn-alt: #2a2a2a;
-            --box-shadow: rgba(0,0,0,0.7);
+            --bg: #080808; --text: #ffffff; --nav-bg: rgba(0,0,0,0.95); --card-bg: #141414;
+            --border: #222; --primary: #e50914; --meta: #888; --btn-alt: #2a2a2a; --box-shadow: rgba(0,0,0,0.7);
         }
         [data-theme="light"] {
-            --bg: #f4f6f8;
-            --text: #111111;
-            --nav-bg: rgba(255,255,255,0.95);
-            --card-bg: #ffffff;
-            --border: #dddddd;
-            --primary: #e50914;
-            --meta: #555;
-            --btn-alt: #e0e0e0;
-            --box-shadow: rgba(0,0,0,0.1);
+            --bg: #f4f6f8; --text: #111111; --nav-bg: rgba(255,255,255,0.95); --card-bg: #ffffff;
+            --border: #dddddd; --primary: #e50914; --meta: #555; --btn-alt: #e0e0e0; --box-shadow: rgba(0,0,0,0.1);
         }
 
         body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 70px; overflow-x: hidden; transition: background 0.3s, color 0.3s; }
         .nav { padding: 15px 20px; background: var(--nav-bg); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; box-shadow: 0 4px 20px var(--box-shadow); transition: background 0.3s; }
         .nav-logo { display: flex; align-items: center; gap: 10px; color: var(--primary); text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         .nav-icons { display: flex; gap: 15px; align-items: center; }
-        
         .theme-toggle { font-size: 22px; cursor: pointer; user-select: none; }
 
         .search { display: flex; width: 100%; max-width: 280px; }
@@ -246,6 +246,9 @@ const getHeader = (title) => `
         .search input:focus { border-color: var(--primary); }
         .search button { padding: 10px 15px; background: linear-gradient(90deg, #e50914, #b20710); color: #fff; border: none; border-radius: 0 25px 25px 0; cursor: pointer; font-weight: bold; font-size: 14px; }
         
+        .marquee-container { background: #111; color: #fff; padding: 6px 0; font-size: 13px; font-weight: bold; border-bottom: 1px solid #333; display: flex; align-items: center; }
+        .marquee-tag { background: #e50914; color: #fff; padding: 2px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-radius: 2px; margin: 0 10px; white-space: nowrap; }
+
         .container { padding: 20px; max-width: 1200px; margin: auto; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; padding: 20px 0; }
         
@@ -255,10 +258,8 @@ const getHeader = (title) => `
         .card-img-wrapper { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; }
         .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
         .card:hover img { transform: scale(1.1); }
-        
         .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); }
         .progress-bar-fill { height: 100%; background: var(--primary); }
-        
         .badge { position: absolute; top: 10px; left: 10px; background: linear-gradient(45deg, #e50914, #ff4b4b); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 2; }
         
         .card-content { padding: 15px; position: relative; z-index: 2; }
@@ -269,6 +270,13 @@ const getHeader = (title) => `
         .toast.show { bottom: 20px; }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
 
+        /* Full Screen Fake Loader Overlay */
+        .fake-loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: monospace; }
+        .loader-spinner { width: 40px; height: 40px; border: 4px solid rgba(229,9,20,0.3); border-top: 4px solid #e50914; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        .loader-text { font-size: 16px; color: #00ff00; text-align: center; }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         @media (max-width: 600px) { 
             .nav { flex-direction: column; gap: 15px; padding: 15px; } 
             .search { max-width: 100%; }
@@ -278,20 +286,13 @@ const getHeader = (title) => `
         }
     </style>
     <script>
-        // Init Theme
-        if(localStorage.getItem('theme') === 'light') {
-            document.documentElement.setAttribute('data-theme', 'light');
-        }
+        if(localStorage.getItem('theme') === 'light') { document.documentElement.setAttribute('data-theme', 'light'); }
         function toggleTheme() {
             const root = document.documentElement;
             if (root.getAttribute('data-theme') === 'light') {
-                root.removeAttribute('data-theme');
-                localStorage.setItem('theme', 'dark');
-                document.getElementById('themeIcon').innerText = '🌞';
+                root.removeAttribute('data-theme'); localStorage.setItem('theme', 'dark'); document.getElementById('themeIcon').innerText = '🌞';
             } else {
-                root.setAttribute('data-theme', 'light');
-                localStorage.setItem('theme', 'light');
-                document.getElementById('themeIcon').innerText = '🌙';
+                root.setAttribute('data-theme', 'light'); localStorage.setItem('theme', 'light'); document.getElementById('themeIcon').innerText = '🌙';
             }
         }
     </script>
@@ -308,13 +309,24 @@ const getHeader = (title) => `
         </form>
     </div>
     
+    <div class="marquee-container">
+        <span class="marquee-tag">Live</span>
+        <marquee behavior="scroll" direction="left" scrollamount="6">
+            🔥 Trending Now: Watch Premium HD Movies and Web Series for Free. Servers are currently running at full capacity. Enjoy Buffer-free streaming! 🔥
+        </marquee>
+    </div>
+
+    <div id="fakeLoader" class="fake-loader">
+        <div class="loader-spinner"></div>
+        <div class="loader-text" id="loaderText">Connecting to Secure Server...</div>
+    </div>
+    
     <div id="liveToast" class="toast">
         <div class="toast-icon"></div>
         <span id="toastMsg">User just started watching...</span>
     </div>
 
     <script>
-        // Set correct icon on load
         if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
 
         const names = ["Rahul", "Sakib", "John", "Priya", "Aman", "Rohan", "Alex", "Fatima", "Arif", "Hasan"];
@@ -328,11 +340,28 @@ const getHeader = (title) => `
             const action = actions[Math.floor(Math.random() * actions.length)];
             
             document.getElementById('toastMsg').innerHTML = '<b>' + name + '</b> from <b>' + city + '</b> just ' + action + '...';
-            
             toast.classList.add('show');
             setTimeout(() => { toast.classList.remove('show'); }, 4000);
         }
         setInterval(showToast, Math.floor(Math.random() * 8000) + 7000);
+
+        function triggerFakeLoader(callback) {
+            const loader = document.getElementById('fakeLoader');
+            const textEl = document.getElementById('loaderText');
+            loader.style.display = 'flex';
+            
+            textEl.innerText = "Establishing Secure Connection...";
+            setTimeout(() => {
+                textEl.innerText = "Handshake Successful! Generating Token...";
+                setTimeout(() => {
+                    textEl.innerText = "Redirecting...";
+                    setTimeout(() => {
+                        loader.style.display = 'none';
+                        callback();
+                    }, 500);
+                }, 800);
+            }, 800);
+        }
     </script>
 `;
 
@@ -379,7 +408,7 @@ app.get('/', async (req, res) => {
         res.send(`
             ${getHeader('Aura Stream - Premium HD Movies')}
             <div class="container">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; margin-bottom: 10px;">
                     <h2 style="margin: 0; font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px;">
                         ${searchQuery ? 'Search Results' : '🔥 Continue Watching & Trending'}
                     </h2>
@@ -413,13 +442,13 @@ app.get('/post/:slug', async (req, res) => {
 
         let lang = {
             msg: "Click watch to verify on our sponsor page, then return here to start streaming.",
-            watchBtn: "▶ Play Movie",
-            dlBtn: "⬇ Download Quality"
+            watchBtn: "▶ Play Server 1 (HD)",
+            dlBtn: "⬇ Fast Download"
         };
 
         if (countryCode === 'BD' || countryCode === 'IN') {
             lang = {
-                msg: "High speed e dekhte play button e click korun. Sponsor page e 30 sec wait kore back ashun, video chalu hobe.",
+                msg: "High speed e dekhte play button e click korun. Sponsor page e 30 sec wait kore back ashun.",
                 watchBtn: "▶ Ekhani Play Korun",
                 dlBtn: "⬇ Download Korun"
             };
@@ -428,16 +457,31 @@ app.get('/post/:slug', async (req, res) => {
         const uiFakeViews = formatFakeViews(post.views);
         const shareSlug = post.slug ? post.slug : post.id;
         const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const postTags = post.tags ? post.tags.split(',') : ["HD", "Streaming", "Trending"];
+        const tagsHtml = postTags.map(t => `<span style="background: var(--btn-alt); padding: 4px 10px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border);">#${t.trim()}</span>`).join('');
+        
+        const metaInfo = `<meta name="keywords" content="${post.tags || 'movies, stream, free'}">
+                          <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">`;
 
         res.send(`
-            ${getHeader(post.title)}
+            ${getHeader(post.title, metaInfo)}
             <style>
                 @keyframes slowZoom { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
                 .hero-bg { width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); animation: slowZoom 20s infinite ease-in-out; }
                 .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: rgba(229,9,20,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); animation: pulse 2s infinite; z-index: 10; }
                 @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); } 70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); } 100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); } }
-                
                 .msg-box { border-left: 3px solid var(--primary); padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }
+                
+                /* Premium Download Table */
+                .dl-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+                .dl-table th, .dl-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); color: var(--text); }
+                .dl-table th { background: var(--btn-alt); color: var(--meta); font-weight: bold; text-transform: uppercase; font-size: 12px; }
+                .dl-btn { background: #28a745; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; border: none; cursor: pointer; }
+                
+                /* Share Buttons */
+                .share-bar { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
+                .share-btn { display: flex; align-items: center; gap: 5px; padding: 8px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; border: none; color: white; }
+                .share-fb { background: #1877f2; } .share-wa { background: #25d366; } .share-copy { background: #555; }
             </style>
 
             <div class="container">
@@ -445,7 +489,7 @@ app.get('/post/:slug', async (req, res) => {
                     
                     <div style="position: relative; width: 100%; background: #000; border-bottom: 3px solid var(--primary); overflow: hidden;">
                         <img src="${getImgSrc(post.thumbnail)}" class="hero-bg">
-                        <div class="play-pulse" onclick="playMovie()">
+                        <div class="play-pulse" onclick="initiateAction()">
                             <div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 22px solid white; margin-left: 6px;"></div>
                         </div>
                         <div style="position: absolute; top: 15px; left: 15px; background: linear-gradient(90deg, #e50914, #ff4b4b); padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
@@ -456,6 +500,10 @@ app.get('/post/:slug', async (req, res) => {
                     <div style="padding: 25px;">
                         <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: var(--text);">${post.title}</h1>
                         
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
+                            ${tagsHtml}
+                        </div>
+
                         <div style="display: flex; gap: 12px; margin-bottom: 20px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
                             <span style="background: var(--btn-alt); padding: 6px 15px; border-radius: 20px;">👁 ${uiFakeViews} Views</span>
                             <span style="color: #4caf50; font-weight: bold;">98% Match</span>
@@ -468,14 +516,49 @@ app.get('/post/:slug', async (req, res) => {
                             </p>
                         </div>
                         
-                        <div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 20px;">
-                            <button id="mainBtn" onclick="playMovie()" style="padding: 18px; background: var(--text); color: var(--bg); border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 30px;">
+                            <button id="mainBtn" onclick="initiateAction()" style="padding: 18px; background: var(--text); color: var(--bg); border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
                                 <div style="width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 14px solid var(--bg);"></div>
                                 <span id="btnText">${lang.watchBtn}</span>
                             </button>
-                            <button onclick="playMovie()" style="padding: 16px; background: var(--btn-alt); color: var(--text); border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer;">
-                                ${lang.dlBtn}
-                            </button>
+                        </div>
+
+                        <h3 style="margin-top: 30px; font-size: 18px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Download Links</h3>
+                        <table class="dl-table">
+                            <thead>
+                                <tr>
+                                    <th>Quality</th>
+                                    <th>Size</th>
+                                    <th>Server</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong style="color: #e50914;">4K UHD</strong></td>
+                                    <td>4.2 GB</td>
+                                    <td>Mega.nz (Fast)</td>
+                                    <td><button onclick="initiateAction()" class="dl-btn">Download</button></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>1080p HD</strong></td>
+                                    <td>2.1 GB</td>
+                                    <td>Google Drive</td>
+                                    <td><button onclick="initiateAction()" class="dl-btn" style="background:#007bff;">Download</button></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>720p HQ</strong></td>
+                                    <td>950 MB</td>
+                                    <td>Direct Link</td>
+                                    <td><button onclick="initiateAction()" class="dl-btn" style="background:#555;">Download</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div class="share-bar">
+                            <button onclick="copyToClipboard()" class="share-btn share-copy">📋 Copy Link</button>
+                            <button onclick="initiateAction()" class="share-btn share-wa">💬 WhatsApp</button>
+                            <button onclick="initiateAction()" class="share-btn share-fb">📘 Facebook</button>
                         </div>
                     </div>
                 </div>
@@ -491,7 +574,6 @@ app.get('/post/:slug', async (req, res) => {
                 const adUrl = '/out/' + slug + '?type=ad';
                 const movieUrl = '/out/' + slug + '?type=content';
 
-                // Evaluate the status whenever the page is loaded/shown
                 function checkStatus() {
                     const adStatus = localStorage.getItem('ad_status_' + slug);
                     const btnText = document.getElementById('btnText');
@@ -512,36 +594,40 @@ app.get('/post/:slug', async (req, res) => {
                     }
                 }
 
-                // Check on load and when returning to the tab
                 window.onload = checkStatus;
                 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkStatus(); });
 
-                function playMovie() {
-                    const adStatus = localStorage.getItem('ad_status_' + slug);
+                function copyToClipboard() {
+                    navigator.clipboard.writeText(window.location.href);
+                    alert("Link copied to clipboard!");
+                }
 
-                    if (!adStatus) {
-                        // First click - Send to Ad in the SAME TAB
-                        localStorage.setItem('ad_status_' + slug, Date.now());
-                        document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
-                        setTimeout(() => {
-                            window.location.href = adUrl; // Redirects SAME TAB
-                        }, 1000);
-                        
-                    } else if (adStatus !== 'unlocked') {
-                        // They pressed back, but check time
-                        const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
-                        if (timePassed < 30) {
-                            const timeLeft = Math.ceil(30 - timePassed);
-                            alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
-                            window.location.href = adUrl; // Send them back to ad
+                function initiateAction() {
+                    triggerFakeLoader(() => {
+                        const adStatus = localStorage.getItem('ad_status_' + slug);
+
+                        if (!adStatus) {
+                            // Send to Ad in the SAME TAB
+                            localStorage.setItem('ad_status_' + slug, Date.now());
+                            document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
+                            window.location.href = adUrl; 
+                            
+                        } else if (adStatus !== 'unlocked') {
+                            // Check time elapsed
+                            const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
+                            if (timePassed < 30) {
+                                const timeLeft = Math.ceil(30 - timePassed);
+                                alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
+                                window.location.href = adUrl; 
+                            } else {
+                                localStorage.setItem('ad_status_' + slug, 'unlocked');
+                                window.location.href = movieUrl; 
+                            }
                         } else {
-                            localStorage.setItem('ad_status_' + slug, 'unlocked');
-                            window.location.href = movieUrl; // SAME TAB movie link
+                            // Unlocked
+                            window.location.href = movieUrl; 
                         }
-                    } else {
-                        // Already unlocked
-                        window.location.href = movieUrl; // SAME TAB movie link
-                    }
+                    });
                 }
             </script>
             </body></html>
@@ -552,7 +638,7 @@ app.get('/post/:slug', async (req, res) => {
     }
 });
 
-// URL formatting happens here before redirecting!
+// Redirect Route
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
     const type = req.query.type;
@@ -568,7 +654,6 @@ app.get('/out/:slug', async (req, res) => {
             const post = result.rows[0];
             await pool.query("UPDATE posts SET clicks = clicks + 1 WHERE id = $1", [post.id]);
             
-            // Format URL properly before redirecting
             const targetUrl = type === 'ad' ? post.ad_link : post.content_link;
             res.redirect(getValidUrl(targetUrl));
         } else {
