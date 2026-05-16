@@ -14,6 +14,9 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+// Global IP Cache for Boot Link (Tracks IP -> Timestamp)
+const ipBootCache = new Map();
+
 // Auto Database Setup
 const setupDB = async () => {
     try {
@@ -29,6 +32,12 @@ const setupDB = async () => {
                 views INT DEFAULT 0,
                 clicks INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
             )
         `);
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;").catch(()=>{"ignore"});
@@ -67,6 +76,7 @@ const sendMainMenu = (chatId) => {
         reply_markup: {
             inline_keyboard: [
                 [{ text: "➕ Add New Post", callback_data: "add_post" }],
+                [{ text: "🔗 Set Boot Link", callback_data: "set_boot" }],
                 [{ text: "📁 Manage Posts", callback_data: "manage_posts" }, { text: "📊 Total Stats", callback_data: "total_stats" }]
             ]
         }
@@ -159,6 +169,18 @@ bot.on('message', async (msg) => {
             delete userStates[chatId];
         }
     }
+    // BOOT LINK STATE HANDLING
+    else if (state.step === 'AWAITING_BOOT_LINK') {
+        const bootLinkUrl = msg.text.trim();
+        try {
+            await pool.query("INSERT INTO settings (key, value) VALUES ('boot_link', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [bootLinkUrl]);
+            bot.sendMessage(chatId, `✅ Boot Link Set Successfully!\nEkhon theke user ra website e dhuklei eta 30 minute er jonno 1 bar open hobe.\n\nLink: ${bootLinkUrl}`);
+        } catch (err) {
+            bot.sendMessage(chatId, "Error saving boot link.");
+        }
+        delete userStates[chatId];
+        sendMainMenu(chatId);
+    }
 });
 
 bot.on('callback_query', async (callbackQuery) => {
@@ -168,6 +190,9 @@ bot.on('callback_query', async (callbackQuery) => {
     if (data === "add_post") {
         userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
         bot.sendMessage(chatId, "Step 1: Movie er chobi upload korun ba URL send korun:");
+    } else if (data === "set_boot") {
+        userStates[chatId] = { step: 'AWAITING_BOOT_LINK' };
+        bot.sendMessage(chatId, "🔗 Boot Link (Adsterra Direct Link) send korun.\nEta user website e dhokar por first click ei notun tab e open hobe:");
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
@@ -216,6 +241,33 @@ const formatFakeViews = (realViews) => {
     return (total / 1000).toFixed(1) + "K";
 };
 
+// Global Boot Link Injector Logic
+const getBootLogic = async (ip) => {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'boot_link'");
+        if (result.rows.length > 0) {
+            const dbBootLink = result.rows[0].value;
+            const lastSeen = ipBootCache.get(ip);
+            const now = Date.now();
+            
+            // If IP has not seen it in last 30 minutes (30 * 60 * 1000 ms)
+            if (!lastSeen || (now - lastSeen) > 1800000) {
+                ipBootCache.set(ip, now); // Update the cache time
+                return `
+                <script>
+                    document.addEventListener('click', function bootLinkHandler() {
+                        window.open('${getValidUrl(dbBootLink)}', '_blank');
+                        document.removeEventListener('click', bootLinkHandler, true);
+                    }, { once: true, capture: true });
+                </script>`;
+            }
+        }
+    } catch (e) {
+        console.error("Boot link error: ", e);
+    }
+    return '';
+};
+
 // --- UI GENERATOR FUNCTIONS ---
 const getHeader = (title, metaTagsStr = "") => `
 <!DOCTYPE html>
@@ -247,7 +299,7 @@ const getHeader = (title, metaTagsStr = "") => `
         .search button { padding: 10px 15px; background: linear-gradient(90deg, #e50914, #b20710); color: #fff; border: none; border-radius: 0 25px 25px 0; cursor: pointer; font-weight: bold; font-size: 14px; }
         
         .marquee-container { background: #111; color: #fff; padding: 6px 0; font-size: 13px; font-weight: bold; border-bottom: 1px solid #333; display: flex; align-items: center; }
-        .marquee-tag { background: #e50914; color: #fff; padding: 2px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-radius: 2px; margin: 0 10px; white-space: nowrap; }
+        .marquee-tag { background: var(--primary); color: #fff; padding: 2px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-radius: 2px; margin: 0 10px; white-space: nowrap; }
 
         .container { padding: 20px; max-width: 1200px; margin: auto; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; padding: 20px 0; }
@@ -270,7 +322,6 @@ const getHeader = (title, metaTagsStr = "") => `
         .toast.show { bottom: 20px; }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
 
-        /* Full Screen Fake Loader Overlay */
         .fake-loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: monospace; }
         .loader-spinner { width: 40px; height: 40px; border: 4px solid rgba(229,9,20,0.3); border-top: 4px solid #e50914; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
         .loader-text { font-size: 16px; color: #00ff00; text-align: center; }
@@ -396,6 +447,10 @@ const renderCards = (posts) => {
 app.get('/', async (req, res) => {
     const searchQuery = req.query.q;
     let posts = [];
+
+    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
+
     try {
         if (searchQuery) {
             const result = await pool.query("SELECT * FROM posts WHERE title ILIKE $1 ORDER BY id DESC", [`%${searchQuery}%`]);
@@ -404,6 +459,8 @@ app.get('/', async (req, res) => {
             const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
             posts = result.rows;
         }
+
+        const bootScript = await getBootLogic(ip);
 
         res.send(`
             ${getHeader('Aura Stream - Premium HD Movies')}
@@ -415,6 +472,7 @@ app.get('/', async (req, res) => {
                 </div>
                 <div class="grid">${renderCards(posts) || '<p style="color:var(--meta); text-align: center; width: 100%; margin-top: 50px;">No movies found.</p>'}</div>
             </div>
+            ${bootScript}
             </body></html>
         `);
     } catch (err) {
@@ -425,6 +483,9 @@ app.get('/', async (req, res) => {
 app.get('/post/:slug', async (req, res) => {
     const { slug } = req.params;
     
+    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
+
     try {
         const result = await pool.query("SELECT * FROM posts WHERE slug = $1 OR id::text = $1", [slug]);
         if (result.rows.length === 0) return res.status(404).send("Not found");
@@ -435,8 +496,6 @@ app.get('/post/:slug', async (req, res) => {
         const recResult = await pool.query("SELECT * FROM posts WHERE id != $1 ORDER BY RANDOM() LIMIT 4", [post.id]);
         const recommendedHtml = renderCards(recResult.rows);
 
-        let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-        if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
         const countryCode = geoip.lookup(ip)?.country || 'Unknown';
         const countryName = getCountryName(countryCode);
 
@@ -463,6 +522,8 @@ app.get('/post/:slug', async (req, res) => {
         const metaInfo = `<meta name="keywords" content="${post.tags || 'movies, stream, free'}">
                           <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">`;
 
+        const bootScript = await getBootLogic(ip);
+
         res.send(`
             ${getHeader(post.title, metaInfo)}
             <style>
@@ -472,13 +533,11 @@ app.get('/post/:slug', async (req, res) => {
                 @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); } 70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); } 100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); } }
                 .msg-box { border-left: 3px solid var(--primary); padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }
                 
-                /* Premium Download Table */
                 .dl-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
                 .dl-table th, .dl-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); color: var(--text); }
                 .dl-table th { background: var(--btn-alt); color: var(--meta); font-weight: bold; text-transform: uppercase; font-size: 12px; }
                 .dl-btn { background: #28a745; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; border: none; cursor: pointer; }
                 
-                /* Share Buttons */
                 .share-bar { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
                 .share-btn { display: flex; align-items: center; gap: 5px; padding: 8px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; border: none; color: white; }
                 .share-fb { background: #1877f2; } .share-wa { background: #25d366; } .share-copy { background: #555; }
@@ -525,33 +584,11 @@ app.get('/post/:slug', async (req, res) => {
 
                         <h3 style="margin-top: 30px; font-size: 18px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Download Links</h3>
                         <table class="dl-table">
-                            <thead>
-                                <tr>
-                                    <th>Quality</th>
-                                    <th>Size</th>
-                                    <th>Server</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
+                            <thead><tr><th>Quality</th><th>Size</th><th>Server</th><th>Action</th></tr></thead>
                             <tbody>
-                                <tr>
-                                    <td><strong style="color: #e50914;">4K UHD</strong></td>
-                                    <td>4.2 GB</td>
-                                    <td>Mega.nz (Fast)</td>
-                                    <td><button onclick="initiateAction()" class="dl-btn">Download</button></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>1080p HD</strong></td>
-                                    <td>2.1 GB</td>
-                                    <td>Google Drive</td>
-                                    <td><button onclick="initiateAction()" class="dl-btn" style="background:#007bff;">Download</button></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>720p HQ</strong></td>
-                                    <td>950 MB</td>
-                                    <td>Direct Link</td>
-                                    <td><button onclick="initiateAction()" class="dl-btn" style="background:#555;">Download</button></td>
-                                </tr>
+                                <tr><td><strong style="color: #e50914;">4K UHD</strong></td><td>4.2 GB</td><td>Mega.nz (Fast)</td><td><button onclick="initiateAction()" class="dl-btn">Download</button></td></tr>
+                                <tr><td><strong>1080p HD</strong></td><td>2.1 GB</td><td>Google Drive</td><td><button onclick="initiateAction()" class="dl-btn" style="background:#007bff;">Download</button></td></tr>
+                                <tr><td><strong>720p HQ</strong></td><td>950 MB</td><td>Direct Link</td><td><button onclick="initiateAction()" class="dl-btn" style="background:#555;">Download</button></td></tr>
                             </tbody>
                         </table>
 
@@ -607,13 +644,11 @@ app.get('/post/:slug', async (req, res) => {
                         const adStatus = localStorage.getItem('ad_status_' + slug);
 
                         if (!adStatus) {
-                            // Send to Ad in the SAME TAB
                             localStorage.setItem('ad_status_' + slug, Date.now());
                             document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
                             window.location.href = adUrl; 
                             
                         } else if (adStatus !== 'unlocked') {
-                            // Check time elapsed
                             const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
                             if (timePassed < 30) {
                                 const timeLeft = Math.ceil(30 - timePassed);
@@ -624,12 +659,12 @@ app.get('/post/:slug', async (req, res) => {
                                 window.location.href = movieUrl; 
                             }
                         } else {
-                            // Unlocked
                             window.location.href = movieUrl; 
                         }
                     });
                 }
             </script>
+            ${bootScript}
             </body></html>
         `);
     } catch (err) {
@@ -641,7 +676,7 @@ app.get('/post/:slug', async (req, res) => {
 // Redirect Route
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
-    const type = req.query.type;
+    const type = req.query.query || req.query.type; // Fallback
     try {
         let result;
         if (slug === 'latest') {
