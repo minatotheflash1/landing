@@ -206,7 +206,6 @@ const getHeader = (title) => `
         .nav-logo { display: flex; align-items: center; gap: 10px; color: #e50914; text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         .nav-icons { display: flex; gap: 15px; align-items: center; }
         
-        /* Fake Cast Icon */
         .cast-icon { width: 24px; height: 24px; border: 2px solid #ccc; border-radius: 4px; position: relative; cursor: pointer; }
         .cast-icon::after { content: ''; position: absolute; bottom: 2px; left: 2px; width: 8px; height: 8px; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; border-radius: 0 0 0 100%; }
         .cast-icon::before { content: ''; position: absolute; bottom: 2px; left: 2px; width: 14px; height: 14px; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; border-radius: 0 0 0 100%; }
@@ -226,7 +225,6 @@ const getHeader = (title) => `
         .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
         .card:hover img { transform: scale(1.1); }
         
-        /* Progress Bar (Continue Watching feel) */
         .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); }
         .progress-bar-fill { height: 100%; background: #e50914; }
         
@@ -277,7 +275,7 @@ const getHeader = (title) => `
             const city = cities[Math.floor(Math.random() * cities.length)];
             const action = actions[Math.floor(Math.random() * actions.length)];
             
-            document.getElementById('toastMsg').innerHTML = \`<b>\${name}</b> from <b>\${city}</b> just \${action}...\`;
+            document.getElementById('toastMsg').innerHTML = '<b>' + name + '</b> from <b>' + city + '</b> just ' + action + '...';
             
             toast.classList.add('show');
             setTimeout(() => { toast.classList.remove('show'); }, 4000);
@@ -292,24 +290,24 @@ const renderCards = (posts) => {
         const postLink = post.slug ? post.slug : post.id; 
         const randomProgress = Math.floor(Math.random() * 60) + 20; 
         
-        return \`
-        <div class="card" onclick="window.location.href='/post/\${postLink}'">
+        return `
+        <div class="card" onclick="window.location.href='/post/${postLink}'">
             <div class="badge">4K ULTRA</div>
             <div class="card-img-wrapper">
-                <img src="\${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">
+                <img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">
                 <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" style="width: \${randomProgress}%;"></div>
+                    <div class="progress-bar-fill" style="width: ${randomProgress}%;"></div>
                 </div>
             </div>
             <div class="card-content">
-                <div class="card-title">\${post.title}</div>
+                <div class="card-title">${post.title}</div>
                 <div class="card-meta">
-                    <span>👁 \${fakeViews}</span>
+                    <span>👁 ${fakeViews}</span>
                     <span style="background: #333; padding: 2px 6px; border-radius: 3px; font-size: 10px; color: #fff;">CC / EN</span>
                 </div>
             </div>
         </div>
-        \`;
+        `;
     }).join('');
 };
 
