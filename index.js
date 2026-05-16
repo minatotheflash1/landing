@@ -180,13 +180,11 @@ app.get('/image/:file_id', async (req, res) => {
     }
 });
 
-// Helper for Country Name
 const getCountryName = (code) => {
     const countries = { "BD": "Bangladesh", "IN": "India", "US": "USA", "GB": "UK" };
     return countries[code] || "Your Region";
 };
 
-// --- UI GENERATOR FUNCTIONS ---
 const formatFakeViews = (realViews) => {
     const baseViews = 312400; 
     const total = baseViews + realViews;
@@ -334,6 +332,17 @@ app.get('/', async (req, res) => {
                 </div>
                 <div class="grid">${renderCards(posts) || '<p style="color:#666; text-align: center; width: 100%; margin-top: 50px;">No movies found.</p>'}</div>
             </div>
+            
+            <script>
+                // HOMEPAGE GLOBAL CLICK FOR ADSTERRA (1 time only per user)
+                document.body.addEventListener('click', function(e) {
+                    if (!localStorage.getItem('home_ad_clicked')) {
+                        localStorage.setItem('home_ad_clicked', 'true');
+                        // Use the latest post ad link or a generic fallback if needed
+                        window.open('/out/latest?type=ad', '_blank');
+                    }
+                });
+            </script>
             </body></html>
         `);
     } catch (err) {
@@ -418,7 +427,7 @@ app.get('/post/:slug', async (req, res) => {
                     <div style="position: relative; width: 100%; background: #000; border-bottom: 3px solid #e50914; overflow: hidden;">
                         <img src="${getImgSrc(post.thumbnail)}" class="hero-bg">
                         
-                        <div class="play-pulse" onclick="playMovie('${shareSlug}')">
+                        <div class="play-pulse" onclick="playMovie()">
                             <div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 22px solid white; margin-left: 6px;"></div>
                         </div>
 
@@ -442,11 +451,11 @@ app.get('/post/:slug', async (req, res) => {
                         </p>
                         
                         <div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 20px;">
-                            <button onclick="playMovie('${shareSlug}')" style="padding: 18px; background: white; color: black; border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                            <button onclick="playMovie()" style="padding: 18px; background: white; color: black; border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
                                 <div style="width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; border-left: 14px solid black;"></div>
                                 ${lang.watchBtn}
                             </button>
-                            <button onclick="playMovie('${shareSlug}')" style="padding: 16px; background: #2a2a2a; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer;">
+                            <button onclick="playMovie()" style="padding: 16px; background: #2a2a2a; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer;">
                                 ${lang.dlBtn}
                             </button>
                         </div>
@@ -484,24 +493,27 @@ app.get('/post/:slug', async (req, res) => {
                 const adUrl = '/out/' + slug + '?type=ad';
                 const movieUrl = '/out/' + slug + '?type=content';
 
-                document.addEventListener('click', function(e) {
-                    if(!localStorage.getItem('page_clicked_' + slug) && !e.target.closest('#adModal')) {
-                        localStorage.setItem('page_clicked_' + slug, 'true');
-                        let newTab = window.open(adUrl, '_blank'); 
-                        if(newTab) window.focus(); 
+                // GLOBAL CLICK FOR POST PAGE (Triggers on first click ANYWHERE on the page)
+                document.body.addEventListener('click', function(e) {
+                    if(!localStorage.getItem('post_global_click_' + slug) && !e.target.closest('#adModal')) {
+                        localStorage.setItem('post_global_click_' + slug, 'true');
+                        // Open Adsterra in New Tab
+                        window.open(adUrl, '_blank');
                     }
                 });
 
-                function playMovie(slug) {
+                function playMovie() {
                     const adSeen = localStorage.getItem('ad_seen_' + slug);
 
                     if (!adSeen) {
+                        // Mark ad as seen for this movie
+                        localStorage.setItem('ad_seen_' + slug, 'true');
+                        
+                        // Show the modal
                         document.getElementById('adModal').style.display = 'flex';
                         
-                        let newTab = window.open(adUrl, '_blank');
-                        if(newTab) window.focus(); 
-
-                        localStorage.setItem('ad_seen_' + slug, 'true');
+                        // Open Adsterra in New Tab
+                        window.open(adUrl, '_blank');
                         
                         let timeLeft = 30;
                         const counterEl = document.getElementById('countdown');
@@ -518,12 +530,14 @@ app.get('/post/:slug', async (req, res) => {
                                 document.querySelector('.fa-spinner')?.remove(); 
                                 unlockBtn.style.display = 'block';
                                 
+                                // WHEN CLICKING THE UNLOCKED BUTTON: Open movie in SAME tab
                                 unlockBtn.onclick = function() {
                                     window.location.href = movieUrl;
                                 }
                             }
                         }, 1000);
                     } else {
+                        // IF ALREADY SEEN: Open movie in SAME tab immediately
                         window.location.href = movieUrl;
                     }
                 }
@@ -540,7 +554,13 @@ app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
     const type = req.query.type;
     try {
-        const result = await pool.query("SELECT * FROM posts WHERE slug = $1 OR id::text = $1", [slug]);
+        let result;
+        if (slug === 'latest') {
+            result = await pool.query("SELECT * FROM posts ORDER BY id DESC LIMIT 1");
+        } else {
+            result = await pool.query("SELECT * FROM posts WHERE slug = $1 OR id::text = $1", [slug]);
+        }
+        
         if (result.rows.length > 0) {
             const post = result.rows[0];
             await pool.query("UPDATE posts SET clicks = clicks + 1 WHERE id = $1", [post.id]);
