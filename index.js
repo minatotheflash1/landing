@@ -14,9 +14,6 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// Global IP Cache for Boot Link (Tracks IP -> Timestamp)
-const ipBootCache = new Map();
-
 // Auto Database Setup
 const setupDB = async () => {
     try {
@@ -169,12 +166,12 @@ bot.on('message', async (msg) => {
             delete userStates[chatId];
         }
     }
-    // BOOT LINK STATE HANDLING
+    // BOOT LINK HANDLING
     else if (state.step === 'AWAITING_BOOT_LINK') {
         const bootLinkUrl = msg.text.trim();
         try {
             await pool.query("INSERT INTO settings (key, value) VALUES ('boot_link', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [bootLinkUrl]);
-            bot.sendMessage(chatId, `✅ Boot Link Set Successfully!\nEkhon theke user ra website e dhuklei eta 30 minute er jonno 1 bar open hobe.\n\nLink: ${bootLinkUrl}`);
+            bot.sendMessage(chatId, `✅ Boot Link Set Successfully!\n\nEkhon theke user website e dhuklei invisible layer e click porbe ebong eta notun tab e open hobe (Protita user er jonno 30 minute e 1 bar).\n\nLink: ${bootLinkUrl}`);
         } catch (err) {
             bot.sendMessage(chatId, "Error saving boot link.");
         }
@@ -192,7 +189,7 @@ bot.on('callback_query', async (callbackQuery) => {
         bot.sendMessage(chatId, "Step 1: Movie er chobi upload korun ba URL send korun:");
     } else if (data === "set_boot") {
         userStates[chatId] = { step: 'AWAITING_BOOT_LINK' };
-        bot.sendMessage(chatId, "🔗 Boot Link (Adsterra Direct Link) send korun.\nEta user website e dhokar por first click ei notun tab e open hobe:");
+        bot.sendMessage(chatId, "🔗 Boot Link (Adsterra Direct Link) send korun.\nEta website er first click e automatically pop-under hishebe khulbe:");
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
@@ -241,32 +238,61 @@ const formatFakeViews = (realViews) => {
     return (total / 1000).toFixed(1) + "K";
 };
 
-// Global Boot Link Injector Logic
-const getBootLogic = async (ip) => {
+// ==========================================
+// BULLETPROOF INVISIBLE OVERLAY BOOT SCRIPT
+// ==========================================
+const getBootLogic = async () => {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'boot_link'");
-        if (result.rows.length > 0) {
+        if (result.rows.length > 0 && result.rows[0].value) {
             const dbBootLink = result.rows[0].value;
-            const lastSeen = ipBootCache.get(ip);
-            const now = Date.now();
-            
-            // If IP has not seen it in last 30 minutes (30 * 60 * 1000 ms)
-            if (!lastSeen || (now - lastSeen) > 1800000) {
-                ipBootCache.set(ip, now); // Update the cache time
-                return `
-                <script>
-                    document.addEventListener('click', function bootLinkHandler() {
-                        window.open('${getValidUrl(dbBootLink)}', '_blank');
-                        document.removeEventListener('click', bootLinkHandler, true);
-                    }, { once: true, capture: true });
-                </script>`;
-            }
+            return `
+            <script>
+                (function() {
+                    const bootLink = "${getValidUrl(dbBootLink)}";
+                    const lastClicked = localStorage.getItem('boot_last_clicked');
+                    const now = Date.now();
+                    
+                    // 30 minutes = 1800000 milliseconds
+                    if (!lastClicked || (now - parseInt(lastClicked)) > 1800000) {
+                        
+                        // Create Invisible Full-Screen Overlay
+                        const overlay = document.createElement('div');
+                        overlay.style.position = 'fixed';
+                        overlay.style.top = '0';
+                        overlay.style.left = '0';
+                        overlay.style.width = '100vw';
+                        overlay.style.height = '100vh';
+                        overlay.style.zIndex = '9999999'; // Stay on top of EVERYTHING
+                        overlay.style.cursor = 'pointer';
+                        
+                        // Attach the overlay to body
+                        document.body.appendChild(overlay);
+
+                        // Capture the first click
+                        overlay.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            
+                            // Save timestamp to localStorage
+                            localStorage.setItem('boot_last_clicked', Date.now());
+                            
+                            // Open Adsterra in New Tab safely
+                            window.open(bootLink, '_blank');
+                            
+                            // Remove overlay immediately so user can click actual site buttons
+                            document.body.removeChild(overlay);
+                        });
+                    }
+                })();
+            </script>`;
         }
     } catch (e) {
         console.error("Boot link error: ", e);
     }
     return '';
 };
+
 
 // --- UI GENERATOR FUNCTIONS ---
 const getHeader = (title, metaTagsStr = "") => `
@@ -318,7 +344,7 @@ const getHeader = (title, metaTagsStr = "") => `
         .card-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
         .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; }
 
-        .toast { position: fixed; bottom: -100px; left: 20px; background: var(--nav-bg); color: var(--text); border-left: 4px solid var(--primary); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px var(--box-shadow); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; }
+        .toast { position: fixed; bottom: -100px; left: 20px; background: var(--nav-bg); color: var(--text); border-left: 4px solid var(--primary); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px var(--box-shadow); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
         .toast.show { bottom: 20px; }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
 
@@ -448,9 +474,6 @@ app.get('/', async (req, res) => {
     const searchQuery = req.query.q;
     let posts = [];
 
-    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
-
     try {
         if (searchQuery) {
             const result = await pool.query("SELECT * FROM posts WHERE title ILIKE $1 ORDER BY id DESC", [`%${searchQuery}%`]);
@@ -460,7 +483,7 @@ app.get('/', async (req, res) => {
             posts = result.rows;
         }
 
-        const bootScript = await getBootLogic(ip);
+        const bootScript = await getBootLogic();
 
         res.send(`
             ${getHeader('Aura Stream - Premium HD Movies')}
@@ -522,7 +545,7 @@ app.get('/post/:slug', async (req, res) => {
         const metaInfo = `<meta name="keywords" content="${post.tags || 'movies, stream, free'}">
                           <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">`;
 
-        const bootScript = await getBootLogic(ip);
+        const bootScript = await getBootLogic();
 
         res.send(`
             ${getHeader(post.title, metaInfo)}
@@ -606,6 +629,8 @@ app.get('/post/:slug', async (req, res) => {
                 </div>
             </div>
 
+            ${bootScript}
+
             <script>
                 const slug = '${shareSlug}';
                 const adUrl = '/out/' + slug + '?type=ad';
@@ -664,7 +689,6 @@ app.get('/post/:slug', async (req, res) => {
                     });
                 }
             </script>
-            ${bootScript}
             </body></html>
         `);
     } catch (err) {
@@ -676,7 +700,7 @@ app.get('/post/:slug', async (req, res) => {
 // Redirect Route
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
-    const type = req.query.query || req.query.type; // Fallback
+    const type = req.query.query || req.query.type; 
     try {
         let result;
         if (slug === 'latest') {
