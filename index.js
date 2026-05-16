@@ -40,6 +40,9 @@ setupDB();
 // Telegram Bot Setup
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
+// Memory to store user steps temporarily
+const userStates = {};
+
 // Admin UI - Main Menu
 const sendMainMenu = (chatId) => {
     const options = {
@@ -51,50 +54,75 @@ const sendMainMenu = (chatId) => {
             ]
         }
     };
-    bot.sendMessage(chatId, "Admin Dashboard\nSelect an option below, Boss:", { parse_mode: "Markdown", ...options });
+    bot.sendMessage(chatId, "Admin Dashboard\nSelect an option below, Boss:", options);
 };
 
 // Start Command
 bot.onText(/\/start/, (msg) => {
+    delete userStates[msg.chat.id]; // reset state on start
     sendMainMenu(msg.chat.id);
 });
 
-// Add Post Command
-bot.onText(/\/addpost (.+)/, async (msg, match) => {
+// Step 1: Trigger Add Post
+bot.onText(/\/addpost/, (msg) => {
     const chatId = msg.chat.id;
-    const input = match[1].split('|').map(s => s.trim());
-    
-    if (input.length !== 3) {
-        return bot.sendMessage(chatId, "Boss, format bhul. Sothik format:\n/addpost ThumbnailURL | AdLink | MainLink", { parse_mode: "Markdown" });
-    }
+    userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
+    bot.sendMessage(chatId, "Step 1: Thumbnail URL upload korun ba send korun:");
+});
 
-    const [thumbnail, adLink, contentLink] = input;
-    bot.sendMessage(chatId, "DeepSeek theke cinematic title generate kora hocche...");
+// Handle Interactive Messages for Bot
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-    try {
-        const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
-            model: "deepseek-chat",
-            messages: [{ role: "user", content: "Generate a catchy, SEO-friendly movie title or streaming headline for a trending video (Max 6 words). Do not use quotes." }]
-        }, {
-            headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` }
-        });
+    // Ignore if no state or if message is a command
+    if (!userStates[chatId] || !text || text.startsWith('/')) return;
 
-        const title = aiResponse.data.choices[0].message.content.trim();
+    const state = userStates[chatId];
 
-        const dbResult = await pool.query(
-            "INSERT INTO posts (title, thumbnail, ad_link, content_link) VALUES ($1, $2, $3, $4) RETURNING id",
-            [title, thumbnail, adLink, contentLink]
-        );
+    if (state.step === 'AWAITING_THUMBNAIL') {
+        state.thumbnail = text.trim();
+        state.step = 'AWAITING_AD_LINK';
+        bot.sendMessage(chatId, "Step 2: Thumbnail peyechi. Ekhon apnar Adsterra link send korun:");
+    } 
+    else if (state.step === 'AWAITING_AD_LINK') {
+        state.adLink = text.trim();
+        state.step = 'AWAITING_CONTENT_LINK';
+        bot.sendMessage(chatId, "Step 3: Adsterra link peyechi. Ekhon main movie link upload korun:");
+    } 
+    else if (state.step === 'AWAITING_CONTENT_LINK') {
+        state.contentLink = text.trim();
+        bot.sendMessage(chatId, "Shob data peyechi. DeepSeek theke cinematic title generate kora hocche, ektu opekkha korun...");
 
-        const postId = dbResult.rows[0].id;
-        const postUrl = `${process.env.WEBSITE_URL}/post/${postId}`;
-        
-        bot.sendMessage(chatId, `Post Live!\n\nTitle: ${title}\nLink: ${postUrl}`, { parse_mode: "Markdown" });
-        sendMainMenu(chatId);
+        try {
+            const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
+                model: "deepseek-chat",
+                messages: [{ role: "user", content: "Generate a catchy, SEO-friendly movie title or streaming headline for a trending video (Max 6 words). Do not use quotes." }]
+            }, {
+                headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` }
+            });
 
-    } catch (error) {
-        console.error(error);
-        bot.sendMessage(chatId, "Error! API Key ba URL check korun.");
+            const title = aiResponse.data.choices[0].message.content.trim();
+
+            const dbResult = await pool.query(
+                "INSERT INTO posts (title, thumbnail, ad_link, content_link) VALUES ($1, $2, $3, $4) RETURNING id",
+                [title, state.thumbnail, state.adLink, state.contentLink]
+            );
+
+            const postId = dbResult.rows[0].id;
+            const postUrl = `${process.env.WEBSITE_URL}/post/${postId}`;
+            
+            bot.sendMessage(chatId, `Post Live!\n\nTitle: ${title}\nLink: ${postUrl}`);
+            
+            // Clear state and show menu
+            delete userStates[chatId];
+            sendMainMenu(chatId);
+
+        } catch (error) {
+            console.error(error);
+            bot.sendMessage(chatId, "Error! DeepSeek Key ba URL check korun. Operational state cancel kora holo.");
+            delete userStates[chatId];
+        }
     }
 });
 
@@ -108,15 +136,16 @@ bot.on('callback_query', async (callbackQuery) => {
         const start = Date.now();
         await pool.query("SELECT 1"); 
         const ms = Date.now() - start;
-        bot.sendMessage(chatId, `Pong!\nServer is active.\nDatabase Latency: ${ms}ms`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `Pong!\nServer is active.\nDatabase Latency: ${ms}ms`);
     
     } else if (data === "add_post") {
-        bot.sendMessage(chatId, "Boss, notun movie add korte nicher command copy kore paste korun:\n\n/addpost ThumbnailURL | AdsterraLink | MainVideoLink", { parse_mode: "Markdown" });
+        userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
+        bot.sendMessage(chatId, "Step 1: Thumbnail URL upload korun ba send korun:");
     
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
-        bot.sendMessage(chatId, `Overall Statistics\n\nTotal Movies: ${stats.total_posts}\nTotal Views: ${stats.total_views || 0}\nTotal Clicks: ${stats.total_clicks || 0}`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `Overall Statistics\n\nTotal Movies: ${stats.total_posts}\nTotal Views: ${stats.total_views || 0}\nTotal Clicks: ${stats.total_clicks || 0}`);
 
     } else if (data === "manage_posts") {
         const result = await pool.query("SELECT id, title FROM posts ORDER BY id DESC LIMIT 5");
@@ -127,7 +156,7 @@ bot.on('callback_query', async (callbackQuery) => {
             { text: `Stats (ID:${post.id})`, callback_data: `stat_${post.id}` }
         ]);
         
-        bot.sendMessage(chatId, "Latest 5 Movies", { parse_mode: "Markdown", reply_markup: { inline_keyboard } });
+        bot.sendMessage(chatId, "Latest 5 Movies", { reply_markup: { inline_keyboard } });
 
     } else if (data.startsWith("del_")) {
         const id = data.split("_")[1];
@@ -139,7 +168,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const result = await pool.query("SELECT title, views, clicks FROM posts WHERE id = $1", [id]);
         if(result.rows.length > 0) {
             const p = result.rows[0];
-            bot.sendMessage(chatId, `Stats for ID: ${id}\nTitle: ${p.title}\nViews: ${p.views}\nClicks: ${p.clicks}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `Stats for ID: ${id}\nTitle: ${p.title}\nViews: ${p.views}\nClicks: ${p.clicks}`);
         }
     }
     bot.answerCallbackQuery(callbackQuery.id);
@@ -158,7 +187,6 @@ const getHeader = (title) => `
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
         body { background-color: var(--bg); color: var(--text); padding-bottom: 50px; }
         
-        /* Navbar & Search */
         .navbar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); position: sticky; top: 0; z-index: 100; }
         .logo { font-size: 24px; font-weight: bold; color: var(--primary); text-decoration: none; text-transform: uppercase; letter-spacing: 2px; }
         .search-container { display: flex; }
@@ -169,7 +197,6 @@ const getHeader = (title) => `
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .section-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #e5e5e5; border-left: 4px solid var(--primary); padding-left: 10px; }
 
-        /* Movie Grid */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
         .movie-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; transition: transform 0.3s ease; position: relative; cursor: pointer; }
         .movie-card:hover { transform: scale(1.05); z-index: 10; box-shadow: 0 10px 20px rgba(0,0,0,0.8); }
@@ -179,7 +206,6 @@ const getHeader = (title) => `
         .card-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; }
         .card-link { display: inline-block; padding: 8px 15px; background: var(--primary); color: white; text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: bold; width: 100%; text-align: center; }
 
-        /* Hero Banner */
         .hero { position: relative; height: 60vh; background-size: cover; background-position: center; display: flex; align-items: flex-end; padding: 40px; }
         .hero-fade { position: absolute; bottom: 0; left: 0; right: 0; height: 100%; background: linear-gradient(to top, var(--bg) 0%, transparent 100%); }
         .hero-content { position: relative; z-index: 2; max-width: 600px; }
@@ -187,7 +213,6 @@ const getHeader = (title) => `
         .hero-btn { display: inline-block; padding: 12px 30px; background: white; color: black; text-decoration: none; font-weight: bold; border-radius: 4px; font-size: 1.1rem; margin-right: 10px; transition: background 0.2s; }
         .hero-btn:hover { background: #e5e5e5; }
         
-        /* Single Post View */
         .player-container { background: #000; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #333; }
         .player-container img { max-width: 100%; max-height: 400px; object-fit: contain; border-radius: 4px; margin-bottom: 20px; }
         .watch-btn { display: inline-block; padding: 15px 40px; background: var(--primary); color: white; text-decoration: none; font-size: 18px; border-radius: 4px; font-weight: bold; margin: 10px; transition: background 0.3s; }
@@ -256,7 +281,27 @@ app.get('/', async (req, res) => {
         `).join('');
 
         let contentTitle = searchQuery ? `Search Results for "${searchQuery}"` : "Recently Added";
-        let emptyState = posts.length === 0 ? '<p style="color: #666;">No content available matching your request.</p>' : '';
+        let emptyState = posts.length === 0 ? '<p style="color: #666; text-align: center; width: 100%; padding: 40px 0;">No content available matching your request. Please add content via Bot.</p>' : '';
+
+        // FIXED: Only inject ad redirect script if database has at least one post
+        let adScript = '';
+        if (posts.length > 0) {
+            adScript = `
+                <script>
+                    const homeAdUrl = "/out/latest?type=ad";
+                    if (!sessionStorage.getItem('home_auto_redirect')) {
+                        sessionStorage.setItem('home_auto_redirect', 'true');
+                        window.location.href = homeAdUrl;
+                    }
+                    document.addEventListener('click', function(e) {
+                        if (!sessionStorage.getItem('home_click_ad')) {
+                            sessionStorage.setItem('home_click_ad', 'true');
+                            window.open(homeAdUrl, '_blank');
+                        }
+                    }, true);
+                </script>
+            `;
+        }
 
         const html = `
             ${getHeader('Aura Stream - Watch High Quality')}
@@ -268,25 +313,7 @@ app.get('/', async (req, res) => {
                 </div>
                 ${emptyState}
             </div>
-            
-            <script>
-                const homeAdUrl = "/out/latest?type=ad";
-                
-                // 1. First Entry Auto Redirect
-                if (!sessionStorage.getItem('home_auto_redirect')) {
-                    sessionStorage.setItem('home_auto_redirect', 'true');
-                    window.location.href = homeAdUrl;
-                }
-
-                // 2. Click Anywhere Popunder
-                document.addEventListener('click', function(e) {
-                    if (!sessionStorage.getItem('home_click_ad')) {
-                        sessionStorage.setItem('home_click_ad', 'true');
-                        window.open(homeAdUrl, '_blank');
-                    }
-                }, true);
-            </script>
-
+            ${adScript}
             ${getFooter()}
         `;
         res.send(html);
@@ -338,14 +365,10 @@ app.get('/post/:id', async (req, res) => {
 
             <script>
                 const postAdUrl = "/out/${post.id}?type=ad";
-                
-                // 1. First Entry Auto Redirect
                 if (!sessionStorage.getItem('post_auto_redirect_${post.id}')) {
                     sessionStorage.setItem('post_auto_redirect_${post.id}', 'true');
                     window.location.href = postAdUrl;
                 }
-
-                // 2. Click Anywhere Popunder
                 document.addEventListener('click', function(e) {
                     if (!sessionStorage.getItem('post_click_ad_${post.id}')) {
                         sessionStorage.setItem('post_click_ad_${post.id}', 'true');
