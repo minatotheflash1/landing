@@ -26,6 +26,7 @@ const setupDB = async () => {
                 ad_link TEXT,
                 content_link TEXT,
                 tags TEXT,
+                media_type TEXT DEFAULT 'photo',
                 views INT DEFAULT 0,
                 clicks INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -39,6 +40,7 @@ const setupDB = async () => {
         `);
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;").catch(()=>{"ignore"});
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tags TEXT;").catch(()=>{"ignore"});
+        await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'photo';").catch(()=>{"ignore"});
         console.log("Database initialized successfully.");
     } catch (err) {
         console.error("DB Setup Error:", err);
@@ -59,6 +61,16 @@ const getValidUrl = (url) => {
 
 // Telegram Bot Setup
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+
+bot.on('polling_error', (error) => {
+    if (error.code && error.code.includes('ETELEGRAM')) return;
+    console.log(`[Telegram Silent Alert]: ${error.message || error}`);
+});
+
+bot.on('error', (error) => {
+    console.error('[Bot Critical Error]:', error.message);
+});
+
 const userStates = {};
 
 const getImgSrc = (thumbnail) => {
@@ -73,7 +85,6 @@ const sendMainMenu = (chatId) => {
         reply_markup: {
             inline_keyboard: [
                 [{ text: "➕ Add New Post", callback_data: "add_post" }],
-                [{ text: "🔗 Set Boot Link", callback_data: "set_boot" }],
                 [{ text: "📁 Manage Posts", callback_data: "manage_posts" }, { text: "📊 Total Stats", callback_data: "total_stats" }]
             ]
         }
@@ -88,7 +99,7 @@ bot.onText(/\/start/, (msg) => {
 bot.onText(/\/addpost/, (msg) => {
     const chatId = msg.chat.id;
     userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
-    bot.sendMessage(chatId, "Step 1: Movie er chobi upload (photo send) korun ba thumbnail URL send korun:");
+    bot.sendMessage(chatId, "Step 1: Movie er chobi ba choto PREVIEW VIDEO (Max 20MB) upload korun ba direct URL send korun:");
 });
 
 bot.on('message', async (msg) => {
@@ -98,15 +109,26 @@ bot.on('message', async (msg) => {
     const state = userStates[chatId];
 
     if (state.step === 'AWAITING_THUMBNAIL') {
-        if (msg.photo && msg.photo.length > 0) {
+        // Checking if the upload is a video or photo
+        if (msg.video) {
+            state.thumbnail = msg.video.file_id;
+            state.media_type = 'video';
+        } else if (msg.animation) {
+            state.thumbnail = msg.animation.file_id;
+            state.media_type = 'video';
+        } else if (msg.photo && msg.photo.length > 0) {
             state.thumbnail = msg.photo[msg.photo.length - 1].file_id;
+            state.media_type = 'photo';
         } else if (msg.text) {
             state.thumbnail = msg.text.trim();
+            // Simple check to see if the URL is a video
+            state.media_type = msg.text.trim().match(/\.(mp4|webm|mkv)$/i) ? 'video' : 'photo';
         } else {
-            return bot.sendMessage(chatId, "Doya kore ekta chobi upload korun ba URL send korun.");
+            return bot.sendMessage(chatId, "Doya kore ekta chobi/video upload korun ba URL send korun.");
         }
+        
         state.step = 'AWAITING_AD_LINK';
-        bot.sendMessage(chatId, "Step 2: Thumbnail peyechi. Ekhon Adsterra link send korun:");
+        bot.sendMessage(chatId, `Step 2: Preview peyechi (${state.media_type}). Ekhon Adsterra link send korun:`);
     } 
     else if (state.step === 'AWAITING_AD_LINK') {
         state.adLink = msg.text.trim();
@@ -151,13 +173,13 @@ bot.on('message', async (msg) => {
             const slug = generateSlug(); 
 
             await pool.query(
-                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags) VALUES ($1, $2, $3, $4, $5, $6)",
-                [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags]
+                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags, media_type) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
             const postUrl = `${process.env.WEBSITE_URL}/post/${slug}`;
             
-            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Tags:* ${generatedTags}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
             delete userStates[chatId];
             sendMainMenu(chatId);
         } catch (error) {
@@ -165,18 +187,6 @@ bot.on('message', async (msg) => {
             bot.sendMessage(chatId, "Error! Title generation ba DB te somossa hoyeche.");
             delete userStates[chatId];
         }
-    }
-    // BOOT LINK HANDLING
-    else if (state.step === 'AWAITING_BOOT_LINK') {
-        const bootLinkUrl = msg.text.trim();
-        try {
-            await pool.query("INSERT INTO settings (key, value) VALUES ('boot_link', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [bootLinkUrl]);
-            bot.sendMessage(chatId, `✅ Boot Link Set Successfully!\n\nEkhon theke user website e dhuklei invisible layer e click porbe ebong eta notun tab e open hobe (Protita user er jonno 30 minute e 1 bar).\n\nLink: ${bootLinkUrl}`);
-        } catch (err) {
-            bot.sendMessage(chatId, "Error saving boot link.");
-        }
-        delete userStates[chatId];
-        sendMainMenu(chatId);
     }
 });
 
@@ -186,10 +196,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (data === "add_post") {
         userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
-        bot.sendMessage(chatId, "Step 1: Movie er chobi upload korun ba URL send korun:");
-    } else if (data === "set_boot") {
-        userStates[chatId] = { step: 'AWAITING_BOOT_LINK' };
-        bot.sendMessage(chatId, "🔗 Boot Link (Adsterra Direct Link) send korun.\nEta website er first click e automatically pop-under hishebe khulbe:");
+        bot.sendMessage(chatId, "Step 1: Movie er chobi ba choto PREVIEW VIDEO upload korun ba URL send korun:");
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
@@ -217,13 +224,14 @@ bot.on('callback_query', async (callbackQuery) => {
     bot.answerCallbackQuery(callbackQuery.id);
 });
 
+// Route works for both images and videos now!
 app.get('/image/:file_id', async (req, res) => {
     try {
         const fileLink = await bot.getFileLink(req.params.file_id);
         const response = await axios({ url: fileLink, method: 'GET', responseType: 'stream' });
         response.data.pipe(res);
     } catch (err) {
-        res.status(404).send("Image not found");
+        res.status(404).send("Media not found");
     }
 });
 
@@ -232,12 +240,8 @@ const getCountryName = (code) => {
     return countries[code] || "Your Region";
 };
 
-// ==========================================
-// DYNAMIC RANDOMIZER FUNCTIONS
-// ==========================================
 const formatFakeViews = (realViews, postId) => {
     const seed = postId ? parseInt(postId) : 1;
-    // Generates a base view count between 150K and 950K that is always the same for a specific post
     const baseViews = 150000 + ((seed * 8734) % 800000); 
     const total = baseViews + realViews;
     return (total / 1000).toFixed(1) + "K";
@@ -245,61 +249,74 @@ const formatFakeViews = (realViews, postId) => {
 
 const getFakeRating = (postId) => {
     const seed = postId ? parseInt(postId) : 1;
-    // Generates a rating between 4.3 and 4.9
     return (4.3 + ((seed * 31) % 7) / 10).toFixed(1);
 };
 
 const getFakeMatch = (postId) => {
     const seed = postId ? parseInt(postId) : 1;
-    // Generates a match percentage between 88% and 99%
     return 88 + ((seed * 19) % 12);
 };
 
+// =========================================================
+// SEQUENTIAL DOUBLE BOOTLINK LOGIC
+// =========================================================
+const getBootLogic = () => {
+    const bootLink1 = "https://www.effectivecpmnetwork.com/sgux6jjeh?key=7b7af537fe5fce366ed26c8fe613d40b"; 
+    const bootLink2 = "https://www.effectivecpmnetwork.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685"; 
+    
+    return `
+    <script>
+        (function() {
+            var link1 = "` + getValidUrl(bootLink1) + `";
+            var link2 = "` + getValidUrl(bootLink2) + `";
+            
+            var clickCount = parseInt(localStorage.getItem("boot_click_count") || "0");
+            var lastReset = parseInt(localStorage.getItem("boot_last_reset") || "0");
+            var now = Date.now();
+            
+            if (!lastReset || (now - lastReset) > 1800000) {
+                clickCount = 0;
+                localStorage.setItem("boot_last_reset", now.toString());
+                localStorage.setItem("boot_click_count", "0");
+            }
+            
+            if (clickCount < 2) {
+                var overlay = document.createElement("div");
+                overlay.style.position = "fixed";
+                overlay.style.top = "0";
+                overlay.style.left = "0";
+                overlay.style.width = "100vw";
+                overlay.style.height = "100vh";
+                overlay.style.zIndex = "9999999";
+                overlay.style.cursor = "pointer";
+                
+                document.body.appendChild(overlay);
 
-// ==========================================
-// BULLETPROOF INVISIBLE OVERLAY BOOT SCRIPT
-// ==========================================
-const getBootLogic = async () => {
-    try {
-        const result = await pool.query("SELECT value FROM settings WHERE key = 'boot_link'");
-        if (result.rows.length > 0 && result.rows[0].value) {
-            const dbBootLink = result.rows[0].value;
-            return `
-            <script>
-                (function() {
-                    const bootLink = "${getValidUrl(dbBootLink)}";
-                    const lastClicked = localStorage.getItem('boot_last_clicked');
-                    const now = Date.now();
+                overlay.addEventListener("click", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     
-                    if (!lastClicked || (now - parseInt(lastClicked)) > 1800000) {
-                        const overlay = document.createElement('div');
-                        overlay.style.position = 'fixed';
-                        overlay.style.top = '0';
-                        overlay.style.left = '0';
-                        overlay.style.width = '100vw';
-                        overlay.style.height = '100vh';
-                        overlay.style.zIndex = '9999999';
-                        overlay.style.cursor = 'pointer';
+                    var currentCount = parseInt(localStorage.getItem("boot_click_count") || "0");
+                    
+                    if (currentCount < 2) {
+                        var targetLink = (currentCount === 0) ? link1 : link2;
+                        localStorage.setItem("boot_click_count", (currentCount + 1).toString());
+                        localStorage.setItem("boot_last_reset", Date.now().toString());
                         
-                        document.body.appendChild(overlay);
-
-                        overlay.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            localStorage.setItem('boot_last_clicked', Date.now());
-                            window.open(bootLink, '_blank');
-                            document.body.removeChild(overlay);
-                        });
+                        window.open(targetLink, "_blank");
+                        document.body.removeChild(overlay);
+                        
+                        if (currentCount === 0) {
+                            setTimeout(function() {
+                                document.body.appendChild(overlay);
+                            }, 1000);
+                        }
                     }
-                })();
-            </script>`;
-        }
-    } catch (e) {
-        console.error("Boot link error: ", e);
-    }
-    return '';
+                });
+            }
+        })();
+    </script>`;
 };
-
 
 // --- UI GENERATOR FUNCTIONS ---
 const getHeader = (title, metaTagsStr = "") => `
@@ -340,27 +357,22 @@ const getHeader = (title, metaTagsStr = "") => `
         .card { background: var(--card-bg); border-radius: 12px; overflow: hidden; cursor: pointer; transition: all 0.3s; position: relative; border: 1px solid var(--border); }
         .card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(229,9,20,0.2); border-color: var(--primary); }
         
-        .card-img-wrapper { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; }
-        .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
+        .card-img-wrapper { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; background: #000; }
+        .card-img-wrapper video, .card-img-wrapper img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.5s ease; }
         .card:hover img { transform: scale(1.1); }
-        .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); }
+        .progress-bar-bg { position: absolute; bottom: 0; left: 0; width: 100%; height: 4px; background: rgba(255,255,255,0.3); z-index: 5; }
         .progress-bar-fill { height: 100%; background: var(--primary); }
-        .badge { position: absolute; top: 10px; left: 10px; background: linear-gradient(45deg, #e50914, #ff4b4b); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 2; }
-        .rating { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #ffd700; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; backdrop-filter: blur(5px); z-index: 2; }
+        .badge { position: absolute; top: 10px; left: 10px; background: linear-gradient(45deg, #e50914, #ff4b4b); color: white; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 5; }
+        .rating { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #ffd700; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; backdrop-filter: blur(5px); z-index: 5; }
         
-        .card-content { padding: 15px; position: relative; z-index: 2; }
+        .card-content { padding: 12px; position: relative; z-index: 2; }
         .card-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-        .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; }
+        .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .click-to-watch-banner { text-align: center; font-size: 12px; font-weight: bold; color: var(--primary); padding-top: 8px; border-top: 1px solid var(--border); }
 
         .toast { position: fixed; bottom: -100px; left: 20px; background: var(--nav-bg); color: var(--text); border-left: 4px solid var(--primary); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px var(--box-shadow); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
         .toast.show { bottom: 20px; }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
-
-        .fake-loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: monospace; }
-        .loader-spinner { width: 40px; height: 40px; border: 4px solid rgba(229,9,20,0.3); border-top: 4px solid #e50914; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        .loader-text { font-size: 16px; color: #00ff00; text-align: center; }
-
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         @media (max-width: 600px) { 
             .nav { flex-direction: column; gap: 15px; padding: 15px; } 
@@ -401,11 +413,6 @@ const getHeader = (title, metaTagsStr = "") => `
         </marquee>
     </div>
 
-    <div id="fakeLoader" class="fake-loader">
-        <div class="loader-spinner"></div>
-        <div class="loader-text" id="loaderText">Connecting to Secure Server...</div>
-    </div>
-    
     <div id="liveToast" class="toast">
         <div class="toast-icon"></div>
         <span id="toastMsg">User just started watching...</span>
@@ -429,24 +436,6 @@ const getHeader = (title, metaTagsStr = "") => `
             setTimeout(() => { toast.classList.remove('show'); }, 4000);
         }
         setInterval(showToast, Math.floor(Math.random() * 8000) + 7000);
-
-        function triggerFakeLoader(callback) {
-            const loader = document.getElementById('fakeLoader');
-            const textEl = document.getElementById('loaderText');
-            loader.style.display = 'flex';
-            
-            textEl.innerText = "Establishing Secure Connection...";
-            setTimeout(() => {
-                textEl.innerText = "Handshake Successful! Generating Token...";
-                setTimeout(() => {
-                    textEl.innerText = "Redirecting...";
-                    setTimeout(() => {
-                        loader.style.display = 'none';
-                        callback();
-                    }, 500);
-                }, 800);
-            }, 800);
-        }
     </script>
 `;
 
@@ -457,12 +446,17 @@ const renderCards = (posts) => {
         const postLink = post.slug ? post.slug : post.id; 
         const randomProgress = Math.floor(Math.random() * 60) + 20; 
         
+        // Dynamic media render
+        const mediaHtml = post.media_type === 'video' 
+            ? `<video src="${getImgSrc(post.thumbnail)}" autoplay muted loop playsinline></video>`
+            : `<img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">`;
+
         return `
         <div class="card" onclick="window.location.href='/post/${postLink}'">
             <div class="badge">4K ULTRA</div>
             <div class="rating">⭐ ${fakeRating}</div>
             <div class="card-img-wrapper">
-                <img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">
+                ${mediaHtml}
                 <div class="progress-bar-bg">
                     <div class="progress-bar-fill" style="width: ${randomProgress}%;"></div>
                 </div>
@@ -472,6 +466,9 @@ const renderCards = (posts) => {
                 <div class="card-meta">
                     <span>👁 ${fakeViews}</span>
                     <span style="background: var(--btn-alt); padding: 2px 6px; border-radius: 3px; font-size: 10px; color: var(--text);">CC / EN</span>
+                </div>
+                <div class="click-to-watch-banner">
+                    ▶ Click to Watch Full Video
                 </div>
             </div>
         </div>
@@ -493,7 +490,7 @@ app.get('/', async (req, res) => {
             posts = result.rows;
         }
 
-        const bootScript = await getBootLogic();
+        const bootScript = getBootLogic(); 
 
         res.send(`
             ${getHeader('Aura Stream - Premium HD Movies')}
@@ -509,6 +506,7 @@ app.get('/', async (req, res) => {
             </body></html>
         `);
     } catch (err) {
+        console.error("Home Route Error:", err);
         res.status(500).send("Server Error");
     }
 });
@@ -558,13 +556,19 @@ app.get('/post/:slug', async (req, res) => {
         const metaInfo = `<meta name="keywords" content="${post.tags || 'movies, stream, free'}">
                           <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">`;
 
-        const bootScript = await getBootLogic();
+        const bootScript = getBootLogic(); 
+        
+        // Media Hero logic
+        const mediaHeroHtml = post.media_type === 'video'
+            ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>`
+            : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg">`;
 
         res.send(`
             ${getHeader(post.title, metaInfo)}
             <style>
                 @keyframes slowZoom { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-                .hero-bg { width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); animation: slowZoom 20s infinite ease-in-out; }
+                .hero-bg { width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); }
+                img.hero-bg { animation: slowZoom 20s infinite ease-in-out; } /* Only zoom image, not video */
                 .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: rgba(229,9,20,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); animation: pulse 2s infinite; z-index: 10; }
                 @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); } 70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); } 100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); } }
                 .msg-box { border-left: 3px solid var(--primary); padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }
@@ -577,13 +581,17 @@ app.get('/post/:slug', async (req, res) => {
                 .share-bar { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
                 .share-btn { display: flex; align-items: center; gap: 5px; padding: 8px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; border: none; color: white; }
                 .share-fb { background: #1877f2; } .share-wa { background: #25d366; } .share-copy { background: #555; }
+
+                /* Attention Banner */
+                .attention-text { text-align: center; margin: 15px 0 25px 0; color: var(--primary); font-weight: bold; font-size: 16px; animation: textPulse 2s infinite; }
+                @keyframes textPulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
             </style>
 
             <div class="container">
                 <div style="max-width: 850px; margin: 0 auto; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 10px 40px var(--box-shadow);">
                     
                     <div style="position: relative; width: 100%; background: #000; border-bottom: 3px solid var(--primary); overflow: hidden;">
-                        <img src="${getImgSrc(post.thumbnail)}" class="hero-bg">
+                        ${mediaHeroHtml}
                         <div class="play-pulse" onclick="initiateAction()">
                             <div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 22px solid white; margin-left: 6px;"></div>
                         </div>
@@ -593,6 +601,11 @@ app.get('/post/:slug', async (req, res) => {
                     </div>
 
                     <div style="padding: 25px;">
+                        
+                        <div class="attention-text">
+                            👇 Click the Play Button Below to Watch Full Video 👇
+                        </div>
+
                         <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: var(--text);">${post.title}</h1>
                         
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -679,35 +692,33 @@ app.get('/post/:slug', async (req, res) => {
                 }
 
                 function initiateAction() {
-                    triggerFakeLoader(() => {
-                        const adStatus = localStorage.getItem('ad_status_' + slug);
+                    const adStatus = localStorage.getItem('ad_status_' + slug);
 
-                        if (!adStatus) {
-                            localStorage.setItem('ad_status_' + slug, Date.now());
-                            document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
+                    if (!adStatus) {
+                        localStorage.setItem('ad_status_' + slug, Date.now());
+                        document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Redirecting to sponsor... Please wait 30 seconds there, then press BACK to return here!</span>";
+                        window.location.href = adUrl; 
+                        
+                    } else if (adStatus !== 'unlocked') {
+                        const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
+                        if (timePassed < 30) {
+                            const timeLeft = Math.ceil(30 - timePassed);
+                            alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
                             window.location.href = adUrl; 
-                            
-                        } else if (adStatus !== 'unlocked') {
-                            const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
-                            if (timePassed < 30) {
-                                const timeLeft = Math.ceil(30 - timePassed);
-                                alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
-                                window.location.href = adUrl; 
-                            } else {
-                                localStorage.setItem('ad_status_' + slug, 'unlocked');
-                                window.location.href = movieUrl; 
-                            }
                         } else {
+                            localStorage.setItem('ad_status_' + slug, 'unlocked');
                             window.location.href = movieUrl; 
                         }
-                    });
+                    } else {
+                        window.location.href = movieUrl; 
+                    }
                 }
             </script>
             </body></html>
         `);
     } catch (err) {
-        console.error(err);
-        res.status(500).send("Error");
+        console.error("Post Route Error:", err);
+        res.status(500).send("Server Error");
     }
 });
 
@@ -733,6 +744,7 @@ app.get('/out/:slug', async (req, res) => {
             res.status(404).send("Link not found");
         }
     } catch (err) {
+        console.error("Out Route Error:", err);
         res.status(500).send("Server Error");
     }
 });
