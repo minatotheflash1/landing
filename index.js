@@ -463,7 +463,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <div class="nav">
         <a href="/" class="nav-logo">⚡ AURA STREAM</a>
         <div class="nav-icons">
-            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">1</span> Online</div>
+            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">186.6k</span> Online</div>
             <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
         </div>
         <form class="search" action="/" method="GET">
