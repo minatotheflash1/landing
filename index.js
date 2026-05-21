@@ -59,12 +59,49 @@ const getValidUrl = (url) => {
     return url;
 };
 
-// Telegram Bot Setup
+// ==========================================
+// REAL-TIME ACTIVE USER TRACKER
+// ==========================================
+const activeUsersMap = new Map();
+
+const trackActiveUser = (ip) => {
+    activeUsersMap.set(ip, Date.now());
+};
+
+const getActiveUsersCount = () => {
+    const now = Date.now();
+    let count = 0;
+    for (let [ip, timestamp] of activeUsersMap.entries()) {
+        if (now - timestamp < 60000) { // Active in the last 60 seconds
+            count++;
+        } else {
+            activeUsersMap.delete(ip); // Clean up old users
+        }
+    }
+    return count > 0 ? count : 1; // Always show at least 1 (the bot/admin)
+};
+
+// Express Middleware for Tracking
+app.use((req, res, next) => {
+    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
+    trackActiveUser(ip);
+    next();
+});
+
+// Live Users API for Website
+app.get('/api/live', (req, res) => {
+    res.json({ activeUsers: getActiveUsersCount() });
+});
+
+
+// ==========================================
+// TELEGRAM BOT SETUP
+// ==========================================
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 bot.on('polling_error', (error) => {
     if (error.code && error.code.includes('ETELEGRAM')) return;
-    console.log(`[Telegram Silent Alert]: ${error.message || error}`);
 });
 
 bot.on('error', (error) => {
@@ -79,13 +116,19 @@ const getImgSrc = (thumbnail) => {
     return `/image/${thumbnail}`;
 };
 
-const sendMainMenu = (chatId) => {
-    bot.sendMessage(chatId, "🛠 *Admin Dashboard*\nSelect an option below, Boss:", {
+const sendMainMenu = async (chatId) => {
+    // Get basic stats for the dashboard preview
+    const result = await pool.query("SELECT COUNT(id) as total_posts FROM posts");
+    const totalPosts = result.rows[0].total_posts;
+    const activeNow = getActiveUsersCount();
+
+    bot.sendMessage(chatId, `👑 *Admin:* Ononto Hasan\n🆔 *Admin ID:* \`${chatId}\`\n\n🟢 *Live Users on Site:* ${activeNow}\n📝 *Total Posts:* ${totalPosts}\n\n🛠 *Select an option below:*`, {
         parse_mode: "Markdown",
         reply_markup: {
             inline_keyboard: [
                 [{ text: "➕ Add New Post", callback_data: "add_post" }],
-                [{ text: "📁 Manage Posts", callback_data: "manage_posts" }, { text: "📊 Total Stats", callback_data: "total_stats" }]
+                [{ text: "📈 View Full Website Stats", callback_data: "total_stats" }],
+                [{ text: "📁 Manage Posts", callback_data: "manage_posts" }]
             ]
         }
     });
@@ -109,7 +152,6 @@ bot.on('message', async (msg) => {
     const state = userStates[chatId];
 
     if (state.step === 'AWAITING_THUMBNAIL') {
-        // Checking if the upload is a video or photo
         if (msg.video) {
             state.thumbnail = msg.video.file_id;
             state.media_type = 'video';
@@ -121,7 +163,6 @@ bot.on('message', async (msg) => {
             state.media_type = 'photo';
         } else if (msg.text) {
             state.thumbnail = msg.text.trim();
-            // Simple check to see if the URL is a video
             state.media_type = msg.text.trim().match(/\.(mp4|webm|mkv)$/i) ? 'video' : 'photo';
         } else {
             return bot.sendMessage(chatId, "Doya kore ekta chobi/video upload korun ba URL send korun.");
@@ -144,7 +185,7 @@ bot.on('message', async (msg) => {
         let inputTitle = msg.text.trim();
         const isAuto = inputTitle.toLowerCase() === 'auto';
         
-        bot.sendMessage(chatId, "DeepSeek API theke data generate kora hocche. Ektu opekkha korun...");
+        bot.sendMessage(chatId, "DeepSeek API theke SEO tags o title generate kora hocche. Ektu opekkha korun...");
 
         try {
             let finalTitle = inputTitle;
@@ -196,11 +237,13 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (data === "add_post") {
         userStates[chatId] = { step: 'AWAITING_THUMBNAIL' };
-        bot.sendMessage(chatId, "Step 1: Movie er chobi ba choto PREVIEW VIDEO upload korun ba URL send korun:");
+        bot.sendMessage(chatId, "Step 1: Movie er chobi ba PREVIEW VIDEO upload korun ba URL send korun:");
     } else if (data === "total_stats") {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
-        bot.sendMessage(chatId, `📊 *REAL Statistics*\n\nTotal Movies: ${stats.total_posts}\nExact Views: ${stats.total_views || 0}\nExact Clicks: ${stats.total_clicks || 0}`, { parse_mode: "Markdown" });
+        const activeNow = getActiveUsersCount();
+        
+        bot.sendMessage(chatId, `📈 *FULL WEBSITE STATS*\n\n👑 *Admin:* Ononto Hasan\n🟢 *Real-Time Live Users:* ${activeNow}\n\n📝 *Total Movies Uploaded:* ${stats.total_posts}\n👁 *Exact Real Views:* ${stats.total_views || 0}\n👆 *Exact Real Clicks:* ${stats.total_clicks || 0}`, { parse_mode: "Markdown" });
     } else if (data === "manage_posts") {
         const result = await pool.query("SELECT id, title FROM posts ORDER BY id DESC LIMIT 5");
         if(result.rows.length === 0) return bot.sendMessage(chatId, "No posts available.");
@@ -218,7 +261,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const id = data.replace("stat_", "");
         const result = await pool.query("SELECT title, views, clicks FROM posts WHERE id = $1", [id]);
         if(result.rows.length > 0) {
-            bot.sendMessage(chatId, `*Stats*\nTitle: ${result.rows[0].title}\nViews: ${result.rows[0].views}\nClicks: ${result.rows[0].clicks}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `*Post Stats*\nTitle: ${result.rows[0].title}\nViews: ${result.rows[0].views}\nClicks: ${result.rows[0].clicks}`, { parse_mode: "Markdown" });
         }
     }
     bot.answerCallbackQuery(callbackQuery.id);
@@ -261,8 +304,9 @@ const getFakeMatch = (postId) => {
 // SEQUENTIAL DOUBLE BOOTLINK LOGIC
 // =========================================================
 const getBootLogic = () => {
-    const bootLink1 = "https://www.effectivecpmnetwork.com/sgux6jjeh?key=7b7af537fe5fce366ed26c8fe613d40b"; 
-    const bootLink2 = "https://www.effectivecpmnetwork.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685"; 
+    // ⬇⬇ 🔴 BOSS, EKHANE APNAR DUITA ADSTERRA BOOT LINK BOSHIYE DIN 🔴 ⬇⬇
+    const bootLink1 = "https://apnar-adsterra-bootlink-1-ekhane-din.com"; 
+    const bootLink2 = "https://apnar-adsterra-bootlink-2-ekhane-din.com"; 
     
     return `
     <script>
@@ -325,6 +369,7 @@ const getHeader = (title, metaTagsStr = "") => `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="robots" content="index, follow">
     ${metaTagsStr}
     <title>${title}</title>
     <style>
@@ -342,6 +387,9 @@ const getHeader = (title, metaTagsStr = "") => `
         .nav-logo { display: flex; align-items: center; gap: 10px; color: var(--primary); text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         .nav-icons { display: flex; gap: 15px; align-items: center; }
         .theme-toggle { font-size: 22px; cursor: pointer; user-select: none; }
+        
+        .live-badge { display: flex; align-items: center; gap: 6px; background: rgba(0, 255, 0, 0.1); border: 1px solid rgba(0,255,0,0.3); color: #00ff00; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; }
+        .live-dot { width: 8px; height: 8px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; animation: blink 1s infinite alternate; }
 
         .search { display: flex; width: 100%; max-width: 280px; }
         .search input { padding: 10px 15px; width: 100%; border-radius: 25px 0 0 25px; border: 1px solid var(--border); outline: none; background: var(--card-bg); color: var(--text); font-size: 14px; transition: border 0.3s; }
@@ -370,15 +418,12 @@ const getHeader = (title, metaTagsStr = "") => `
         .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .click-to-watch-banner { text-align: center; font-size: 12px; font-weight: bold; color: var(--primary); padding-top: 8px; border-top: 1px solid var(--border); }
 
-        .toast { position: fixed; bottom: -100px; left: 20px; background: var(--nav-bg); color: var(--text); border-left: 4px solid var(--primary); padding: 15px 20px; border-radius: 8px; box-shadow: 0 5px 25px var(--box-shadow); transition: bottom 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55); z-index: 1000; font-size: 14px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
-        .toast.show { bottom: 20px; }
-        .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
+        @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0.3; } }
 
         @media (max-width: 600px) { 
             .nav { flex-direction: column; gap: 15px; padding: 15px; } 
             .search { max-width: 100%; }
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .toast { left: 10px; right: 10px; text-align: center; justify-content: center; }
             .nav-icons { position: absolute; top: 15px; right: 20px; }
         }
     </style>
@@ -398,6 +443,7 @@ const getHeader = (title, metaTagsStr = "") => `
     <div class="nav">
         <a href="/" class="nav-logo">⚡ AURA STREAM</a>
         <div class="nav-icons">
+            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">1</span> Online</div>
             <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
         </div>
         <form class="search" action="/" method="GET">
@@ -413,29 +459,22 @@ const getHeader = (title, metaTagsStr = "") => `
         </marquee>
     </div>
 
-    <div id="liveToast" class="toast">
-        <div class="toast-icon"></div>
-        <span id="toastMsg">User just started watching...</span>
-    </div>
-
     <script>
         if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
 
-        const names = ["Rahul", "Sakib", "John", "Priya", "Aman", "Rohan", "Alex", "Fatima", "Arif", "Hasan"];
-        const cities = ["Dhaka", "Mumbai", "London", "Kolkata", "Delhi", "Toronto", "New York", "Sylhet"];
-        const actions = ["started watching", "downloaded HD", "is streaming 4K"];
-        
-        function showToast() {
-            const toast = document.getElementById('liveToast');
-            const name = names[Math.floor(Math.random() * names.length)];
-            const city = cities[Math.floor(Math.random() * cities.length)];
-            const action = actions[Math.floor(Math.random() * actions.length)];
-            
-            document.getElementById('toastMsg').innerHTML = '<b>' + name + '</b> from <b>' + city + '</b> just ' + action + '...';
-            toast.classList.add('show');
-            setTimeout(() => { toast.classList.remove('show'); }, 4000);
+        // Real-Time Active Users Fetcher
+        function updateLiveUsers() {
+            fetch('/api/live')
+                .then(res => res.json())
+                .then(data => {
+                    if(document.getElementById('realLiveCount')) {
+                        document.getElementById('realLiveCount').innerText = data.activeUsers;
+                    }
+                }).catch(err => console.log(err));
         }
-        setInterval(showToast, Math.floor(Math.random() * 8000) + 7000);
+        // Update every 10 seconds
+        setInterval(updateLiveUsers, 10000);
+        updateLiveUsers(); // Initial fetch
     </script>
 `;
 
@@ -446,7 +485,6 @@ const renderCards = (posts) => {
         const postLink = post.slug ? post.slug : post.id; 
         const randomProgress = Math.floor(Math.random() * 60) + 20; 
         
-        // Dynamic media render
         const mediaHtml = post.media_type === 'video' 
             ? `<video src="${getImgSrc(post.thumbnail)}" autoplay muted loop playsinline></video>`
             : `<img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">`;
@@ -491,9 +529,11 @@ app.get('/', async (req, res) => {
         }
 
         const bootScript = getBootLogic(); 
+        const metaTags = `<meta name="description" content="Watch the latest trending movies and videos online for free in 1080p and 4K UHD.">
+                          <meta name="keywords" content="movies, online stream, watch free, hd movies, 4k movies, trending video">`;
 
         res.send(`
-            ${getHeader('Aura Stream - Premium HD Movies')}
+            ${getHeader('Aura Stream - Premium HD Movies', metaTags)}
             <div class="container">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; margin-bottom: 10px;">
                     <h2 style="margin: 0; font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px;">
@@ -558,7 +598,6 @@ app.get('/post/:slug', async (req, res) => {
 
         const bootScript = getBootLogic(); 
         
-        // Media Hero logic
         const mediaHeroHtml = post.media_type === 'video'
             ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>`
             : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg">`;
@@ -568,7 +607,7 @@ app.get('/post/:slug', async (req, res) => {
             <style>
                 @keyframes slowZoom { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
                 .hero-bg { width: 100%; max-height: 500px; object-fit: cover; filter: brightness(0.5); }
-                img.hero-bg { animation: slowZoom 20s infinite ease-in-out; } /* Only zoom image, not video */
+                img.hero-bg { animation: slowZoom 20s infinite ease-in-out; } 
                 .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 75px; height: 75px; background: rgba(229,9,20,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); animation: pulse 2s infinite; z-index: 10; }
                 @keyframes pulse { 0% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.7); } 70% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 15px rgba(229, 9, 20, 0); } 100% { transform: translate(-50%, -50%) scale(0.95); box-shadow: 0 0 0 0 rgba(229, 9, 20, 0); } }
                 .msg-box { border-left: 3px solid var(--primary); padding-left: 12px; background: rgba(229,9,20,0.05); padding: 12px; margin-bottom: 25px; border-radius: 0 8px 8px 0; }
@@ -581,8 +620,6 @@ app.get('/post/:slug', async (req, res) => {
                 .share-bar { display: flex; gap: 10px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 15px; }
                 .share-btn { display: flex; align-items: center; gap: 5px; padding: 8px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; border: none; color: white; }
                 .share-fb { background: #1877f2; } .share-wa { background: #25d366; } .share-copy { background: #555; }
-
-                /* Attention Banner */
                 .attention-text { text-align: center; margin: 15px 0 25px 0; color: var(--primary); font-weight: bold; font-size: 16px; animation: textPulse 2s infinite; }
                 @keyframes textPulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
             </style>
@@ -601,10 +638,7 @@ app.get('/post/:slug', async (req, res) => {
                     </div>
 
                     <div style="padding: 25px;">
-                        
-                        <div class="attention-text">
-                            👇 Click the Play Button Below to Watch Full Video 👇
-                        </div>
+                        <div class="attention-text">👇 Click the Play Button Below to Watch Full Video 👇</div>
 
                         <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: var(--text);">${post.title}</h1>
                         
@@ -722,7 +756,6 @@ app.get('/post/:slug', async (req, res) => {
     }
 });
 
-// Redirect Route
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
     const type = req.query.query || req.query.type; 
