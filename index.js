@@ -176,7 +176,7 @@ bot.on('message', async (msg) => {
     else if (state.step === 'AWAITING_CONTENT_LINK') {
         state.contentLink = msg.text.trim();
         state.step = 'AWAITING_TITLE';
-        bot.sendMessage(chatId, "Step 4: Main movie link peyechi.\n\nEkhon apnar pochhondo moto ekta *Title* likhun.\n*(Jodi apni chan auto generate hok, tahole shudhu \`auto\` likhe send korun)*", { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, "Step 4: Main movie link peyechi.\n\nEkhon apnar pochhondo moto ekta *Title* likhun.\n*(Jodi apni chan auto generate hok, tahole shudhu `auto` likhe send korun)*", { parse_mode: "Markdown" });
     }
     else if (state.step === 'AWAITING_TITLE') {
         let inputTitle = msg.text.trim();
@@ -200,8 +200,7 @@ bot.on('message', async (msg) => {
             }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
 
             try {
-                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(new RegExp("```json", "gi"), "").replace(new RegExp("
-```", "g"), "");
+                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(/```json/g, '').replace(/```/g, '');
                 const parsedData = JSON.parse(rawJson);
                 if (isAuto && parsedData.title) finalTitle = parsedData.title;
                 if (parsedData.tags) generatedTags = parsedData.tags;
@@ -216,9 +215,9 @@ bot.on('message', async (msg) => {
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            const postUrl = ${process.env.WEBSITE_URL}/post/${slug};
+            const postUrl = `${process.env.WEBSITE_URL}/post/${slug}`;
             
-            bot.sendMessage(chatId, ✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
             delete userStates[chatId];
             sendMainMenu(chatId);
         } catch (error) {
@@ -231,7 +230,7 @@ bot.on('message', async (msg) => {
         const noticeText = msg.text.trim();
         try {
             await pool.query("INSERT INTO settings (key, value) VALUES ('site_notice', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [noticeText]);
-            bot.sendMessage(chatId, ✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}`, { parse_mode: "Markdown" });
         } catch (err) {
             bot.sendMessage(chatId, "Error saving notice.");
         }
@@ -254,28 +253,28 @@ bot.on('callback_query', async (callbackQuery) => {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
         const activeNow = getActiveUsersCount();
-        bot.sendMessage(chatId, 📈 *FULL EXACT WEBSITE STATS*\n\n👑 *Admin:* Ononto Hasan\n🟢 *Real-Time Live Users:* ${activeNow}\n\n📝 *Total Movies Uploaded:* ${stats.total_posts || 0}\n👁 *Exact Real Views:* ${(stats.total_views || 0).toLocaleString()}\n👆 *Exact Real Clicks:* ${(stats.total_clicks || 0).toLocaleString()}, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `📈 *FULL EXACT WEBSITE STATS*\n\n👑 *Admin:* Ononto Hasan\n🟢 *Real-Time Live Users:* ${activeNow}\n\n📝 *Total Movies Uploaded:* ${stats.total_posts || 0}\n👁 *Exact Real Views:* ${(stats.total_views || 0).toLocaleString()}\n👆 *Exact Real Clicks:* ${(stats.total_clicks || 0).toLocaleString()}`, { parse_mode: "Markdown" });
     } else if (data === "manage_posts") {
         const result = await pool.query("SELECT id, title FROM posts ORDER BY id DESC LIMIT 5");
         if(result.rows.length === 0) return bot.sendMessage(chatId, "No posts available.");
         
         let inline_keyboard = result.rows.map(post => [
-            { text: 🗑 Del: ${post.title.substring(0,10)}, callback_data: del_${post.id} },
-            { text: 📊 Stats, callback_data: stat_${post.id} }
+            { text: `🗑 Del: ${post.title.substring(0,10)}`, callback_data: `del_${post.id}` },
+            { text: `📊 Stats`, callback_data: `stat_${post.id}` }
         ]);
         bot.sendMessage(chatId, "📁 Latest 5 Movies", { reply_markup: { inline_keyboard } });
     } else if (data === "reset_stats") {
         await pool.query("UPDATE posts SET views = 0, clicks = 0");
-        bot.sendMessage(chatId, ✅ Shob posts er views ebong clicks 0 (zero) te reset kora hoyeche.);
+        bot.sendMessage(chatId, `✅ Shob posts er views ebong clicks 0 (zero) te reset kora hoyeche.`);
     } else if (data.startsWith("del_")) {
         const id = data.replace("del_", "");
         await pool.query("DELETE FROM posts WHERE id = $1", [id]);
-        bot.sendMessage(chatId, ✅ Post deleted successfully.);
+        bot.sendMessage(chatId, `✅ Post deleted successfully.`);
     } else if (data.startsWith("stat_")) {
         const id = data.replace("stat_", "");
         const result = await pool.query("SELECT title, views, clicks FROM posts WHERE id = $1", [id]);
         if(result.rows.length > 0) {
-            bot.sendMessage(chatId, *Post Exact Stats*\n\n🎬 Title: ${result.rows[0].title}\n👁 Views: ${(result.rows[0].views || 0).toLocaleString()}\n👆 Clicks: ${(result.rows[0].clicks || 0).toLocaleString()}, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `*Post Exact Stats*\n\n🎬 Title: ${result.rows[0].title}\n👁 Views: ${(result.rows[0].views || 0).toLocaleString()}\n👆 Clicks: ${(result.rows[0].clicks || 0).toLocaleString()}`, { parse_mode: "Markdown" });
         }
     }
     bot.answerCallbackQuery(callbackQuery.id);
@@ -322,7 +321,7 @@ const bootLink2 = "https://www.effectivecpmnetwork.com/sgux6jjeh?key=7b7af537fe5
 const link3 = "https://www.effectivecpmnetwork.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685";
 
 const getBootLogic = () => {
-    return 
+    return `
     <script>
         (function() {
             var l1 = "${bootLink1}";
@@ -380,18 +379,17 @@ const getBootLogic = () => {
             if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
             if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
         };
-    </script>;
+    </script>`;
 };
 
 // --- UI GENERATOR FUNCTIONS ---
-const getHeader = (title, metaTagsStr = "", siteNotice = "") => 
+const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="robots" content="index, follow">
-    <meta name="google-site-verification" content="qIHtN1UhgoBuNIFj1Jy6z1cK9_wsNWVdlGrcF3bH5ZA" />
     ${metaTagsStr}
     <title>${title}</title>
     <style>
@@ -523,7 +521,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") =>
         }
         setInterval(showToast, Math.floor(Math.random() * 8000) + 7000);
     </script>
-;
+`;
 
 const renderCards = (posts) => {
     return posts.map(post => {
@@ -533,10 +531,10 @@ const renderCards = (posts) => {
         const randomProgress = Math.floor(Math.random() * 60) + 20; 
         
         const mediaHtml = post.media_type === 'video' 
-            ? <video src="${getImgSrc(post.thumbnail)}" autoplay muted loop playsinline></video>
-            : <img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">;
+            ? `<video src="${getImgSrc(post.thumbnail)}" autoplay muted loop playsinline></video>`
+            : `<img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">`;
 
-        return 
+        return `
         <div class="card" onclick="window.location.href='/post/${postLink}'">
             <div class="badge">4K ULTRA</div>
             <div class="rating">⭐ ${fakeRating}</div>
@@ -557,7 +555,7 @@ const renderCards = (posts) => {
                 </div>
             </div>
         </div>
-        ;
+        `;
     }).join('');
 };
 
@@ -568,7 +566,7 @@ app.get('/', async (req, res) => {
 
     try {
         if (searchQuery) {
-            const result = await pool.query("SELECT * FROM posts WHERE title ILIKE $1 ORDER BY id DESC", [%${searchQuery}%]);
+            const result = await pool.query("SELECT * FROM posts WHERE title ILIKE $1 ORDER BY id DESC", [`%${searchQuery}%`]);
             posts = result.rows;
         } else {
             const result = await pool.query("SELECT * FROM posts ORDER BY id DESC");
@@ -577,10 +575,10 @@ app.get('/', async (req, res) => {
 
         const bootScript = getBootLogic(); 
         const siteNotice = await getSiteNotice();
-        const metaTags = <meta name="description" content="Watch the latest trending movies and videos online for free in 1080p and 4K UHD.">
-                          <meta name="keywords" content="movies, online stream, watch free, hd movies, 4k movies, trending video">;
+        const metaTags = `<meta name="description" content="Watch the latest trending movies and videos online for free in 1080p and 4K UHD.">
+                          <meta name="keywords" content="movies, online stream, watch free, hd movies, 4k movies, trending video">`;
 
-        res.send(
+        res.send(`
             ${getHeader('Aura Stream - Premium HD Movies', metaTags, siteNotice)}
             <div class="container">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; margin-bottom: 10px;">
@@ -592,7 +590,7 @@ app.get('/', async (req, res) => {
             </div>
             ${bootScript}
             </body></html>
-        );
+        `);
     } catch (err) {
         console.error("Home Route Error:", err);
         res.status(500).send("Server Error");
@@ -638,19 +636,19 @@ app.get('/post/:slug', async (req, res) => {
         const shareSlug = post.slug ? post.slug : post.id;
         const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         const postTags = post.tags ? post.tags.split(',') : ["HD", "Streaming", "Trending"];
-        const tagsHtml = postTags.map(t => <span style="background: var(--btn-alt); padding: 4px 10px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border);">#${t.trim()}</span>).join('');
+        const tagsHtml = postTags.map(t => `<span style="background: var(--btn-alt); padding: 4px 10px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border);">#${t.trim()}</span>`).join('');
         
-        const metaInfo = <meta name="keywords" content="${post.tags || 'movies, stream, free'}">
-                          <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">;
+        const metaInfo = `<meta name="keywords" content="${post.tags || 'movies, stream, free'}">
+                          <meta name="description" content="Watch ${post.title} online for free. HD streaming available.">`;
 
         const bootScript = getBootLogic(); 
         const siteNotice = await getSiteNotice();
         
         const mediaHeroHtml = post.media_type === 'video'
-            ? <video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>
-            : <img src="${getImgSrc(post.thumbnail)}" class="hero-bg">;
+            ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>`
+            : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg">`;
 
-        res.send(
+        res.send(`
             ${getHeader(post.title, metaInfo, siteNotice)}
             <style>
                 @keyframes slowZoom { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
@@ -878,7 +876,7 @@ app.get('/post/:slug', async (req, res) => {
                 }
             </script>
             </body></html>
-        );
+        `);
     } catch (err) {
         console.error("Post Route Error:", err);
         res.status(500).send("Server Error");
