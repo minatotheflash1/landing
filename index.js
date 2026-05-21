@@ -909,5 +909,8 @@ app.get('/out/:slug', async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
-
+// Google Site Verification Route
+app.get('/googlea0ea22577137387b.html', (req, res) => {
+    res.send('google-site-verification: googlea0ea22577137387b.html');
+});
 app.listen(process.env.PORT || 3000, () => console.log('Server is running'));
