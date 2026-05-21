@@ -215,7 +215,7 @@ bot.on('message', async (msg) => {
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            const postUrl = ${process.env.WEBSITE_URL}/post/${slug};
+            const postUrl = `${process.env.WEBSITE_URL}/post/${slug}`;
             
             bot.sendMessage(chatId, ✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}, { parse_mode: "Markdown" });
             delete userStates[chatId];
