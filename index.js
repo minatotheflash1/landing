@@ -200,8 +200,7 @@ bot.on('message', async (msg) => {
             }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
 
             try {
-                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(/```json/g, '').replace(/
-```/g, '');
+                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(/`{3}json/g, '').replace(/`{3}/g, '');
                 const parsedData = JSON.parse(rawJson);
                 if (isAuto && parsedData.title) finalTitle = parsedData.title;
                 if (parsedData.tags) generatedTags = parsedData.tags;
