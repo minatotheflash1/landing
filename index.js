@@ -230,7 +230,7 @@ bot.on('message', async (msg) => {
         const noticeText = msg.text.trim();
         try {
             await pool.query("INSERT INTO settings (key, value) VALUES ('site_notice', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [noticeText]);
-            bot.sendMessage(chatId, ✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}`, { parse_mode: "Markdown" });
         } catch (err) {
             bot.sendMessage(chatId, "Error saving notice.");
         }
