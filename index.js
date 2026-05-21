@@ -60,7 +60,7 @@ const getValidUrl = (url) => {
 };
 
 // ==========================================
-// REAL-TIME ACTIVE USER TRACKER
+// REAL-TIME ACTIVE USER TRACKER (EXACT FOR BOT)
 // ==========================================
 const activeUsersMap = new Map();
 
@@ -86,10 +86,6 @@ app.use((req, res, next) => {
     if (ip && ip.includes(',')) ip = ip.split(',')[0].trim();
     trackActiveUser(ip);
     next();
-});
-
-app.get('/api/live', (req, res) => {
-    res.json({ activeUsers: getActiveUsersCount() });
 });
 
 const getSiteNotice = async () => {
@@ -128,14 +124,14 @@ const sendMainMenu = async (chatId) => {
     const totalPosts = result.rows[0].total_posts;
     const activeNow = getActiveUsersCount();
 
-    bot.sendMessage(chatId, `👑 *Admin:* Ononto Hasan\n🆔 *Admin ID:* \`${chatId}\`\n\n🟢 *Live Users on Site:* ${activeNow}\n📝 *Total Posts:* ${totalPosts}\n\n🛠 *Select an option below:*`, {
+    bot.sendMessage(chatId, `👑 *Admin:* Ononto Hasan\n🆔 *Admin ID:* \`${chatId}\`\n\n🟢 *EXACT Live Users:* ${activeNow}\n📝 *Total Posts:* ${totalPosts}\n\n🛠 *Select an option below:*`, {
         parse_mode: "Markdown",
         reply_markup: {
             inline_keyboard: [
                 [{ text: "➕ Add New Post", callback_data: "add_post" }],
                 [{ text: "📢 Set Site Notice", callback_data: "set_notice" }],
                 [{ text: "📈 View Full Website Stats", callback_data: "total_stats" }],
-                [{ text: "📁 Manage Posts", callback_data: "manage_posts" }]
+                [{ text: "📁 Manage Posts", callback_data: "manage_posts" }, { text: "🔄 Reset Stats", callback_data: "reset_stats" }]
             ]
         }
     });
@@ -257,7 +253,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const result = await pool.query("SELECT COUNT(id) as total_posts, SUM(views) as total_views, SUM(clicks) as total_clicks FROM posts");
         const stats = result.rows[0];
         const activeNow = getActiveUsersCount();
-        bot.sendMessage(chatId, `📈 *FULL WEBSITE STATS*\n\n👑 *Admin:* Ononto Hasan\n🟢 *Real-Time Live Users:* ${activeNow}\n\n📝 *Total Movies Uploaded:* ${stats.total_posts}\n👁 *Exact Real Views:* ${stats.total_views || 0}\n👆 *Exact Real Clicks:* ${stats.total_clicks || 0}`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `📈 *FULL EXACT WEBSITE STATS*\n\n👑 *Admin:* Ononto Hasan\n🟢 *Real-Time Live Users:* ${activeNow}\n\n📝 *Total Movies Uploaded:* ${stats.total_posts || 0}\n👁 *Exact Real Views:* ${(stats.total_views || 0).toLocaleString()}\n👆 *Exact Real Clicks:* ${(stats.total_clicks || 0).toLocaleString()}`, { parse_mode: "Markdown" });
     } else if (data === "manage_posts") {
         const result = await pool.query("SELECT id, title FROM posts ORDER BY id DESC LIMIT 5");
         if(result.rows.length === 0) return bot.sendMessage(chatId, "No posts available.");
@@ -267,6 +263,9 @@ bot.on('callback_query', async (callbackQuery) => {
             { text: `📊 Stats`, callback_data: `stat_${post.id}` }
         ]);
         bot.sendMessage(chatId, "📁 Latest 5 Movies", { reply_markup: { inline_keyboard } });
+    } else if (data === "reset_stats") {
+        await pool.query("UPDATE posts SET views = 0, clicks = 0");
+        bot.sendMessage(chatId, `✅ Shob posts er views ebong clicks 0 (zero) te reset kora hoyeche.`);
     } else if (data.startsWith("del_")) {
         const id = data.replace("del_", "");
         await pool.query("DELETE FROM posts WHERE id = $1", [id]);
@@ -275,7 +274,7 @@ bot.on('callback_query', async (callbackQuery) => {
         const id = data.replace("stat_", "");
         const result = await pool.query("SELECT title, views, clicks FROM posts WHERE id = $1", [id]);
         if(result.rows.length > 0) {
-            bot.sendMessage(chatId, `*Post Stats*\nTitle: ${result.rows[0].title}\nViews: ${result.rows[0].views}\nClicks: ${result.rows[0].clicks}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, `*Post Exact Stats*\n\n🎬 Title: ${result.rows[0].title}\n👁 Views: ${(result.rows[0].views || 0).toLocaleString()}\n👆 Clicks: ${(result.rows[0].clicks || 0).toLocaleString()}`, { parse_mode: "Markdown" });
         }
     }
     bot.answerCallbackQuery(callbackQuery.id);
@@ -296,6 +295,7 @@ const getCountryName = (code) => {
     return countries[code] || "Your Region";
 };
 
+// Frontend format for Views
 const formatFakeViews = (realViews, postId) => {
     const seed = postId ? parseInt(postId) : 1;
     const baseViews = 150000 + ((seed * 8734) % 800000); 
@@ -331,7 +331,7 @@ const getBootLogic = () => {
             var lastReset = parseInt(localStorage.getItem("boot_last_reset") || "0");
             var now = Date.now();
             
-            if (!lastReset || (now - lastReset) > 1800000) { // 30 minutes
+            if (!lastReset || (now - lastReset) > 1800000) { 
                 clickCount = 0;
                 localStorage.setItem("boot_last_reset", now.toString());
                 localStorage.setItem("boot_click_count", "0");
@@ -359,7 +359,6 @@ const getBootLogic = () => {
                         localStorage.setItem("boot_click_count", (currentCount + 1).toString());
                         localStorage.setItem("boot_last_reset", Date.now().toString());
                         
-                        // Guaranteed New Tab click
                         window.open(targetLink, "_blank");
                         document.body.removeChild(overlay);
                         
@@ -370,6 +369,16 @@ const getBootLogic = () => {
                 });
             }
         })();
+        
+        // SECURITY: ANTI-INSPECT ELEMENT & RIGHT CLICK BLOCKER
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
+            if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+        };
     </script>`;
 };
 
@@ -393,7 +402,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
             --border: #dddddd; --primary: #e50914; --meta: #555; --btn-alt: #e0e0e0; --box-shadow: rgba(0,0,0,0.1);
         }
 
-        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 90px; overflow-x: hidden; transition: background 0.3s, color 0.3s; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding-bottom: 90px; overflow-x: hidden; transition: background 0.3s, color 0.3s; user-select: none; }
         .nav { padding: 15px 20px; background: var(--nav-bg); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; box-shadow: 0 4px 20px var(--box-shadow); transition: background 0.3s; }
         .nav-logo { display: flex; align-items: center; gap: 10px; color: var(--primary); text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         .nav-icons { display: flex; gap: 15px; align-items: center; }
@@ -433,10 +442,8 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         .toast.show { transform: translateX(0); }
         .toast-icon { width: 10px; height: 10px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 8px #00ff00; }
 
-        /* Sticky Footer Banner */
         .sticky-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: linear-gradient(90deg, #0088cc, #005580); color: white; text-align: center; padding: 12px; font-weight: bold; font-size: 14px; z-index: 999; cursor: pointer; box-shadow: 0 -4px 15px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; gap: 10px; }
-        .sticky-footer:hover { background: linear-gradient(90deg, #005580, #00334d); }
-
+        
         @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0.3; } }
 
         @media (max-width: 600px) { 
@@ -463,7 +470,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <div class="nav">
         <a href="/" class="nav-logo">⚡ AURA STREAM</a>
         <div class="nav-icons">
-            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">186.6k</span> Online</div>
+            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">248.7K</span> Online</div>
             <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
         </div>
         <form class="search" action="/" method="GET">
@@ -489,17 +496,14 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <script>
         if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
 
-        function updateLiveUsers() {
-            fetch('/api/live')
-                .then(res => res.json())
-                .then(data => {
-                    if(document.getElementById('realLiveCount')) {
-                        document.getElementById('realLiveCount').innerText = data.activeUsers;
-                    }
-                }).catch(err => console.log(err));
+        // Fake Fluctuating 248.7K Logic
+        let baseLiveCount = 248700;
+        function updateFakeLiveUsers() {
+            // Fluctuate between roughly 248.6K and 248.9K
+            baseLiveCount += Math.floor(Math.random() * 41) - 20; 
+            document.getElementById('realLiveCount').innerText = (baseLiveCount / 1000).toFixed(1) + "K";
         }
-        setInterval(updateLiveUsers, 10000);
-        updateLiveUsers(); 
+        setInterval(updateFakeLiveUsers, 5000); // Change every 5 seconds
 
         const names = ["Rahul", "Sakib", "John", "Priya", "Aman", "Rohan", "Alex", "Fatima", "Arif", "Hasan"];
         const cities = ["Dhaka", "Mumbai", "London", "Kolkata", "Delhi", "Toronto", "New York", "Sylhet"];
@@ -604,6 +608,7 @@ app.get('/post/:slug', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).send("Not found");
         
         const post = result.rows[0];
+        // Exact real view increment for Bot
         pool.query("UPDATE posts SET views = views + 1 WHERE id = $1", [post.id]).catch(e => console.error(e));
 
         const recResult = await pool.query("SELECT * FROM posts WHERE id != $1 ORDER BY RANDOM() LIMIT 4", [post.id]);
@@ -671,11 +676,20 @@ app.get('/post/:slug', async (req, res) => {
 
                 .quality-select { background: var(--card-bg); color: var(--text); border: 1px solid var(--border); padding: 8px; border-radius: 4px; outline: none; cursor: pointer; font-weight: bold; margin-left: auto; }
                 .verified-badge { color: #00ff00; font-weight: bold; display: flex; align-items: center; gap: 5px; font-size: 12px; }
+
+                /* FAKE COMMENTS STYLING */
+                .comment-section { margin-top: 30px; background: var(--card-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--border); }
+                .comment { display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-start; }
+                .comment-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; flex-shrink: 0; }
+                .comment-header { font-weight: bold; color: var(--text); margin-bottom: 5px; font-size: 14px; }
+                .comment-time { color: var(--meta); font-size: 11px; font-weight: normal; margin-left: 5px; }
+                .comment-text { color: #aaa; font-size: 14px; line-height: 1.4; }
+                .comment-likes { color: var(--meta); font-size: 12px; margin-top: 5px; font-weight: bold; cursor: pointer; }
             </style>
 
             <div class="container">
                 <div style="background: rgba(255, 215, 0, 0.1); border: 1px solid gold; color: gold; text-align: center; padding: 10px; margin-bottom: 20px; border-radius: 8px; cursor: pointer; font-weight: bold;" onclick="window.open('${link3}', '_blank')">
-                    ⚠️ Server Overloaded (89% Load). Click Here to Switch to VIP Server (No Buffering) ⚡
+                    ⚠️ Server Overloaded. Click Here to Switch to VIP Server (No Buffering) ⚡
                 </div>
 
                 <div style="max-width: 850px; margin: 0 auto; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 10px 40px var(--box-shadow);">
@@ -691,7 +705,6 @@ app.get('/post/:slug', async (req, res) => {
                     </div>
 
                     <div style="padding: 25px;">
-                        
                         <div class="attention-text">👇 Human Verification Required: Click Play to Verify & Watch 👇</div>
 
                         <h1 style="margin: 0 0 15px 0; font-size: 28px; line-height: 1.3; color: var(--text);">${post.title}</h1>
@@ -745,6 +758,39 @@ app.get('/post/:slug', async (req, res) => {
                     </div>
                 </div>
 
+                <div style="max-width: 850px; margin: 0 auto;">
+                    <div class="comment-section">
+                        <h3 style="margin-top: 0; color: var(--text); font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">Comments (1,402)</h3>
+                        
+                        <div class="comment">
+                            <div class="comment-avatar" style="background: #e50914;">A</div>
+                            <div>
+                                <div class="comment-header">Alex_Pro <span class="comment-time">2 hours ago</span></div>
+                                <div class="comment-text">Quality is completely insane! Server 1 loaded without any buffering for me. Thanks man!</div>
+                                <div class="comment-likes" onclick="window.open('${link3}', '_blank')">👍 245 Likes</div>
+                            </div>
+                        </div>
+
+                        <div class="comment">
+                            <div class="comment-avatar" style="background: #007bff;">S</div>
+                            <div>
+                                <div class="comment-header">Sarah_Jenn <span class="comment-time">5 hours ago</span></div>
+                                <div class="comment-text">Finally found the full HD version after searching everywhere. It works perfectly on my phone.</div>
+                                <div class="comment-likes" onclick="window.open('${link3}', '_blank')">👍 189 Likes</div>
+                            </div>
+                        </div>
+
+                        <div class="comment">
+                            <div class="comment-avatar" style="background: #28a745;">M</div>
+                            <div>
+                                <div class="comment-header">MovieBuff_99 <span class="comment-time">1 day ago</span></div>
+                                <div class="comment-text">Just had to wait 30 seconds and the movie started immediately. Best streaming site ever!</div>
+                                <div class="comment-likes" onclick="window.open('${link3}', '_blank')">👍 302 Likes</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="margin-top: 40px;">
                     <h3 style="font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px; margin-bottom: 20px;">More Like This</h3>
                     <div class="grid">${recommendedHtml}</div>
@@ -755,11 +801,9 @@ app.get('/post/:slug', async (req, res) => {
 
             <script>
                 const slug = '${shareSlug}';
-                // Use post's assigned ad link for the main flow
                 const adUrl = '/out/' + slug + '?type=ad';
                 const movieUrl = '/out/' + slug + '?type=content';
 
-                // Ensure blinking file sizes look dynamic
                 setInterval(() => {
                     document.querySelectorAll('.blink-size').forEach(el => {
                         el.style.opacity = el.style.opacity == 1 ? 0.7 : 1;
@@ -794,7 +838,6 @@ app.get('/post/:slug', async (req, res) => {
                     alert("Link copied to clipboard!");
                 }
 
-                // MAIN ACTION FLOW (NEW TAB + TIMER)
                 function initiateAction() {
                     const adStatus = localStorage.getItem('ad_status_' + slug);
 
@@ -802,10 +845,8 @@ app.get('/post/:slug', async (req, res) => {
                         localStorage.setItem('ad_status_' + slug, Date.now());
                         document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Sponsor tab opened! Please stay on this page. Timer started...</span>";
                         
-                        // OPEN AD IN NEW TAB (Guaranteed click for Adsterra)
                         window.open(adUrl, '_blank'); 
                         
-                        // START TIMER IN CURRENT TAB
                         const btnText = document.getElementById('btnText');
                         let timeLeft = 30;
                         
@@ -830,7 +871,6 @@ app.get('/post/:slug', async (req, res) => {
                             window.location.href = movieUrl; 
                         }
                     } else {
-                        // Unlocked!
                         window.location.href = movieUrl; 
                     }
                 }
@@ -843,7 +883,6 @@ app.get('/post/:slug', async (req, res) => {
     }
 });
 
-// Redirect Route
 app.get('/out/:slug', async (req, res) => {
     const { slug } = req.params;
     const type = req.query.query || req.query.type; 
@@ -857,6 +896,7 @@ app.get('/out/:slug', async (req, res) => {
         
         if (result.rows.length > 0) {
             const post = result.rows[0];
+            // EXACT REAL CLICKS COUNTING FOR BOT
             await pool.query("UPDATE posts SET clicks = clicks + 1 WHERE id = $1", [post.id]);
             
             const targetUrl = type === 'ad' ? post.ad_link : post.content_link;
