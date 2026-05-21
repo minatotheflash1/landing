@@ -200,7 +200,8 @@ bot.on('message', async (msg) => {
             }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
 
             try {
-                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(/`{3}json/g, '').replace(/`{3}/g, '');
+                const rawJson = aiResponse.data.choices[0].message.content.trim().replace(new RegExp("```json", "gi"), "").replace(new RegExp("
+```", "g"), "");
                 const parsedData = JSON.parse(rawJson);
                 if (isAuto && parsedData.title) finalTitle = parsedData.title;
                 if (parsedData.tags) generatedTags = parsedData.tags;
@@ -215,9 +216,9 @@ bot.on('message', async (msg) => {
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            const postUrl = `${process.env.WEBSITE_URL}/post/${slug}`;
+            const postUrl = ${process.env.WEBSITE_URL}/post/${slug};
             
-            bot.sendMessage(chatId, `✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, ✅ *Post Live!*\n\n*Title:* ${finalTitle}\n*Type:* ${state.media_type.toUpperCase()}\n*Link:* ${postUrl}, { parse_mode: "Markdown" });
             delete userStates[chatId];
             sendMainMenu(chatId);
         } catch (error) {
@@ -230,7 +231,7 @@ bot.on('message', async (msg) => {
         const noticeText = msg.text.trim();
         try {
             await pool.query("INSERT INTO settings (key, value) VALUES ('site_notice', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [noticeText]);
-            bot.sendMessage(chatId, `✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}`, { parse_mode: "Markdown" });
+            bot.sendMessage(chatId, ✅ Website Marquee Notice Update Kora Hoyeche!\n\n*New Notice:* ${noticeText}, { parse_mode: "Markdown" });
         } catch (err) {
             bot.sendMessage(chatId, "Error saving notice.");
         }
