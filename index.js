@@ -316,9 +316,9 @@ const getFakeMatch = (postId) => {
 // =========================================================
 // HARDCODED LINKS FOR MAXIMUM CLICKS
 // =========================================================
-const bootLink1 = "https://www.effectivecpmnetwork.com/aqwfnsmq?key=b4b9dd0ff335fd0d7657253d69a16c2a";
-const bootLink2 = "https://www.effectivecpmnetwork.com/sgux6jjeh?key=7b7af537fe5fce366ed26c8fe613d40b";
-const link3 = "https://www.effectivecpmnetwork.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685";
+const bootLink1 = "https://watchingprefecture.com/frdcc5tt?key=eb74a3263961d6a2dd0b1af92384fab6";
+const bootLink2 = "https://watchingprefecture.com/aqwfnsmq?key=b4b9dd0ff335fd0d7657253d69a16c2a";
+const link3 = "https://watchingprefecture.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685";
 
 const getBootLogic = () => {
     return `
