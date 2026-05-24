@@ -59,6 +59,18 @@ const getValidUrl = (url) => {
     return url;
 };
 
+// =========================================================
+// ADSTERRA AD CODES (DIRECTLY FROM YOUR DASHBOARD)
+// =========================================================
+const AD_POPUNDER = `<script src="https://watchingprefecture.com/8b/68/3d/8b683d2f51d3f07afad4fe0599539b5b.js"></script>`;
+const AD_SOCIAL_BAR = `<script src="https://watchingprefecture.com/97/65/84/9765849a19d69df50b6273f7a2477c7c.js"></script>`;
+const AD_NATIVE_BANNER = `<script async="async" data-cfasync="false" src="https://watchingprefecture.com/f8e4e7aac8b848ebc1897089138e92ae/invoke.js"></script><div id="container-f8e4e7aac8b848ebc1897089138e92ae"></div>`;
+
+// Link 3 is now replaced with your specific Smartlink
+const bootLink1 = "https://watchingprefecture.com/frdcc5tt?key=eb74a3263961d6a2dd0b1af92384fab6";
+const bootLink2 = "https://watchingprefecture.com/aqwfnsmq?key=b4b9dd0ff335fd0d7657253d69a16c2a";
+const link3 = "https://watchingprefecture.com/narj94mqa7?key=e1d970186b27618a729bae48455d4f53"; // NEW SMARTLINK
+
 // ==========================================
 // REAL-TIME ACTIVE USER TRACKER (EXACT FOR BOT)
 // ==========================================
@@ -314,12 +326,8 @@ const getFakeMatch = (postId) => {
 };
 
 // =========================================================
-// HARDCODED LINKS FOR MAXIMUM CLICKS
+// SEQUENTIAL DOUBLE BOOTLINK LOGIC
 // =========================================================
-const bootLink1 = "https://watchingprefecture.com/frdcc5tt?key=eb74a3263961d6a2dd0b1af92384fab6";
-const bootLink2 = "https://watchingprefecture.com/aqwfnsmq?key=b4b9dd0ff335fd0d7657253d69a16c2a";
-const link3 = "https://watchingprefecture.com/wgs6f8c2?key=1eac772d2eaf7c1fc2339dc44d18e685";
-
 const getBootLogic = () => {
     return `
     <script>
@@ -392,6 +400,8 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <meta name="robots" content="index, follow">
     ${metaTagsStr}
     <title>${title}</title>
+    ${AD_POPUNDER}
+    ${AD_SOCIAL_BAR}
     <style>
         :root {
             --bg: #080808; --text: #ffffff; --nav-bg: rgba(0,0,0,0.95); --card-bg: #141414;
@@ -496,14 +506,12 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <script>
         if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
 
-        // Fake Fluctuating 248.7K Logic
         let baseLiveCount = 248700;
         function updateFakeLiveUsers() {
-            // Fluctuate between roughly 248.6K and 248.9K
             baseLiveCount += Math.floor(Math.random() * 41) - 20; 
             document.getElementById('realLiveCount').innerText = (baseLiveCount / 1000).toFixed(1) + "K";
         }
-        setInterval(updateFakeLiveUsers, 5000); // Change every 5 seconds
+        setInterval(updateFakeLiveUsers, 5000); 
 
         const names = ["Rahul", "Sakib", "John", "Priya", "Aman", "Rohan", "Alex", "Fatima", "Arif", "Hasan"];
         const cities = ["Dhaka", "Mumbai", "London", "Kolkata", "Delhi", "Toronto", "New York", "Sylhet"];
@@ -581,6 +589,10 @@ app.get('/', async (req, res) => {
         res.send(`
             ${getHeader('Aura Stream - Premium HD Movies', metaTags, siteNotice)}
             <div class="container">
+                <div style="margin: 10px auto 20px auto; text-align: center; min-height: 50px;">
+                    ${AD_NATIVE_BANNER}
+                </div>
+
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; margin-bottom: 10px;">
                     <h2 style="margin: 0; font-size: 22px; color: var(--text); border-left: 4px solid var(--primary); padding-left: 12px;">
                         ${searchQuery ? 'Search Results' : '🔥 Continue Watching & Trending'}
@@ -608,7 +620,6 @@ app.get('/post/:slug', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).send("Not found");
         
         const post = result.rows[0];
-        // Exact real view increment for Bot
         pool.query("UPDATE posts SET views = views + 1 WHERE id = $1", [post.id]).catch(e => console.error(e));
 
         const recResult = await pool.query("SELECT * FROM posts WHERE id != $1 ORDER BY RANDOM() LIMIT 4", [post.id]);
@@ -740,7 +751,11 @@ app.get('/post/:slug', async (req, res) => {
                             </button>
                         </div>
 
-                        <h3 style="margin-top: 30px; font-size: 18px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Fast Download Servers</h3>
+                        <div style="margin: 30px auto 10px auto; text-align: center; border: 1px solid var(--border); padding: 10px; border-radius: 8px; background: var(--bg);">
+                            ${AD_NATIVE_BANNER}
+                        </div>
+
+                        <h3 style="margin-top: 10px; font-size: 18px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Fast Download Servers</h3>
                         <table class="dl-table">
                             <thead><tr><th>Quality</th><th>Size</th><th>Server</th><th>Action</th></tr></thead>
                             <tbody>
@@ -865,7 +880,8 @@ app.get('/post/:slug', async (req, res) => {
                         const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
                         if (timePassed < 30) {
                             const timeLeft = Math.ceil(30 - timePassed);
-                            alert("⚠️ Verification not complete! Please wait " + timeLeft + " more seconds on this page.");
+                            alert("⚠️ You returned too early! Please wait " + timeLeft + " more seconds on the sponsor page to unlock the movie.");
+                            window.location.href = adUrl; 
                         } else {
                             localStorage.setItem('ad_status_' + slug, 'unlocked');
                             window.location.href = movieUrl; 
@@ -896,7 +912,6 @@ app.get('/out/:slug', async (req, res) => {
         
         if (result.rows.length > 0) {
             const post = result.rows[0];
-            // EXACT REAL CLICKS COUNTING FOR BOT
             await pool.query("UPDATE posts SET clicks = clicks + 1 WHERE id = $1", [post.id]);
             
             const targetUrl = type === 'ad' ? post.ad_link : post.content_link;
@@ -909,8 +924,21 @@ app.get('/out/:slug', async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
-// Google Site Verification Route
-app.get('/googlea0ea22577137387b.html', (req, res) => {
-    res.send('google-site-verification: googlea0ea22577137387b.html');
+
+// Google Sitemap for Fast Indexing
+app.get('/sitemap.xml', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT slug FROM posts");
+        let xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
+        result.rows.forEach(p => {
+            xml += `<url><loc>${process.env.WEBSITE_URL}/post/${p.slug}</loc></url>`;
+        });
+        xml += '</urlset>';
+        res.header('Content-Type', 'application/xml');
+        res.send(xml);
+    } catch (e) {
+        res.status(500).send("Sitemap error");
+    }
 });
+
 app.listen(process.env.PORT || 3000, () => console.log('Server is running'));
