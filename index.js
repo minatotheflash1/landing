@@ -533,6 +533,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         </form>
     </div>
     
+    <!-- Google Translate Script -->
     <script type="text/javascript">
         function googleTranslateElementInit() {
             new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
@@ -540,25 +541,42 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     </script>
     <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
+    <!-- Adblocker Detection Logic -->
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             var bait = document.createElement('div');
+            bait.innerHTML = '&nbsp;';
             bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad textAd text_ad text_ads text-ads text-ad-links';
             bait.style.position = 'absolute';
+            bait.style.width = '10px';
+            bait.style.height = '10px';
             bait.style.left = '-9999px';
             bait.style.top = '-9999px';
             document.body.appendChild(bait);
             
             setTimeout(function() {
-                if (bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none') {
+                var isBlocked = false;
+                if (!document.body.contains(bait)) {
+                    isBlocked = true;
+                } else if (bait.offsetHeight === 0 || bait.clientHeight === 0) {
+                    isBlocked = true;
+                } else {
+                    var style = window.getComputedStyle(bait);
+                    if (style.display === 'none' || style.visibility === 'hidden') {
+                        isBlocked = true;
+                    }
+                }
+                
+                if (isBlocked) {
                     document.documentElement.innerHTML = '<body style="margin:0;padding:0;background:#ffffff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui, sans-serif;color:#111;"><div style="text-align:center;max-width:600px;padding:20px;">' +
                     '<h1 style="font-size:30px;font-weight:900;color:#ff3300;margin-bottom:15px;">Adblocker Detected!</h1>' +
                     '<p style="font-size:18px;line-height:1.6;color:#333;margin-bottom:25px;">Kindly disable your adblocker and refresh the page to proceed. We rely on ads to keep our premium content free for everyone.</p>' +
                     '<button onclick="location.reload()" style="padding:12px 28px;background:#ff5500;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(255,85,0,0.3);">I have disabled it, Refresh Page</button>' +
                     '</div></body>';
+                } else {
+                    bait.remove();
                 }
-                bait.remove();
-            }, 500);
+            }, 600);
         });
     </script>
 
