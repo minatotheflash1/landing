@@ -11,14 +11,14 @@ const cors = require('cors');
 
 const app = express();
 
-// Security Middleware
-app.use(helmet({ contentSecurityPolicy: false })); // CSP disabled for Adsterra scripts
+// Security Middleware (Relaxed CSP for Google Translate and Adsterra)
+app.use(helmet({ contentSecurityPolicy: false })); 
 app.use(cors());
 
 // Rate Limiting to prevent DDoS
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // limit each IP to 200 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 200,
     message: "Too many requests from this IP, please try again later."
 });
 app.use(limiter);
@@ -27,7 +27,7 @@ app.use(limiter);
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 20, // Connection pool limit
+    max: 20,
     idleTimeoutMillis: 30000
 });
 
@@ -89,7 +89,6 @@ const AD_SOCIAL_BAR = `<script src="https://watchingprefecture.com/97/65/84/9765
 const AD_NATIVE_BANNER = `<script async="async" data-cfasync="false" src="https://watchingprefecture.com/f8e4e7aac8b848ebc1897089138e92ae/invoke.js"></script><div id="container-f8e4e7aac8b848ebc1897089138e92ae"></div>`;
 
 const bootLink1 = "https://watchingprefecture.com/frdcc5tt?key=eb74a3263961d6a2dd0b1af92384fab6";
-const bootLink2 = "https://watchingprefecture.com/aqwfnsmq?key=b4b9dd0ff335fd0d7657253d69a16c2a";
 const link3 = "https://watchingprefecture.com/narj94mqa7?key=e1d970186b27618a729bae48455d4f53";
 
 // REAL-TIME & VISITORS TRACKER
@@ -103,11 +102,8 @@ const getActiveUsersCount = () => {
     const now = Date.now();
     let count = 0;
     for (let [ip, timestamp] of activeUsersMap.entries()) {
-        if (now - timestamp < 60000) { 
-            count++;
-        } else {
-            activeUsersMap.delete(ip); 
-        }
+        if (now - timestamp < 60000) { count++; } 
+        else { activeUsersMap.delete(ip); }
     }
     return count > 0 ? count : 1; 
 };
@@ -385,7 +381,7 @@ const getBootLogic = () => {
     return `
     <script>
         (function() {
-            var l1 = "${bootLink1}"; var l2 = "${bootLink2}";
+            var l1 = "${bootLink1}";
             var clickCount = parseInt(localStorage.getItem("boot_click_count") || "0");
             var lastReset = parseInt(localStorage.getItem("boot_last_reset") || "0");
             var now = Date.now();
@@ -394,7 +390,7 @@ const getBootLogic = () => {
                 clickCount = 0; localStorage.setItem("boot_last_reset", now.toString()); localStorage.setItem("boot_click_count", "0");
             }
             
-            if (clickCount < 2) {
+            if (clickCount < 1) {
                 var overlay = document.createElement("div");
                 overlay.style.position = "fixed"; overlay.style.top = "0"; overlay.style.left = "0";
                 overlay.style.width = "100vw"; overlay.style.height = "100vh"; overlay.style.zIndex = "9999999"; overlay.style.cursor = "pointer";
@@ -403,12 +399,11 @@ const getBootLogic = () => {
                 overlay.addEventListener("click", function(e) {
                     e.preventDefault(); e.stopPropagation();
                     var currentCount = parseInt(localStorage.getItem("boot_click_count") || "0");
-                    if (currentCount < 2) {
-                        var targetLink = (currentCount === 0) ? l1 : l2;
-                        localStorage.setItem("boot_click_count", (currentCount + 1).toString());
+                    if (currentCount < 1) {
+                        localStorage.setItem("boot_click_count", "1");
                         localStorage.setItem("boot_last_reset", Date.now().toString());
-                        window.open(targetLink, "_blank"); document.body.removeChild(overlay);
-                        if (currentCount === 0) setTimeout(function() { document.body.appendChild(overlay); }, 1000);
+                        window.open(l1, "_blank"); 
+                        document.body.removeChild(overlay);
                     }
                 });
             }
@@ -457,7 +452,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         * { box-sizing: border-box; transition: background 0.3s ease, border-color 0.3s ease; }
         body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; padding-bottom: 90px; overflow-x: hidden; user-select: none; -webkit-tap-highlight-color: transparent; }
         
-        .nav { padding: 14px 24px; background: var(--nav-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+        .nav { padding: 14px 24px; background: var(--nav-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; flex-wrap: wrap;}
         .nav-logo { display: flex; align-items: center; text-decoration: none; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; }
         .logo-part1 { background: linear-gradient(135deg, #ff7700, #ff3300); color: #fff; padding: 4px 10px; border-radius: 8px; margin-right: 5px; box-shadow: 0 4px 12px rgba(255,51,0,0.3); }
         .logo-part2 { color: var(--text); font-style: italic; }
@@ -471,6 +466,12 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         .search input { padding: 11px 18px; width: 100%; border-radius: 30px; border: 1px solid var(--border); outline: none; background: var(--btn-alt); color: var(--text); font-size: 14px; padding-right: 85px; }
         .search button { position: absolute; right: 4px; top: 4px; bottom: 4px; border-radius: 30px; padding: 0 16px; background: linear-gradient(135deg, #ff6a00, #ff3300); color: #fff; border: none; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 6px rgba(255,51,0,0.2); }
         
+        /* Translate specific styles */
+        .translate-wrapper { display: flex; align-items: center; margin-right: 15px; }
+        .goog-te-gadget-simple { background-color: var(--btn-alt) !important; border: 1px solid var(--border) !important; border-radius: 8px; padding: 6px !important; }
+        .goog-te-gadget-simple span { color: var(--text) !important; font-family: system-ui, sans-serif !important; }
+        .goog-te-gadget-icon { display: none; }
+
         .marquee-container { background: rgba(255, 85, 0, 0.06); color: var(--text); padding: 8px 0; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
         .marquee-tag { background: var(--primary); color: #fff; padding: 3px 8px; font-size: 11px; font-weight: 800; border-radius: 4px; margin-left: 20px; margin-right: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         
@@ -502,7 +503,8 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
             .nav { flex-direction: column; gap: 14px; padding: 16px; }
             .search { max-width: 100%; }
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .nav-icons { position: absolute; top: 14px; right: 16px; }
+            .nav-icons { position: relative; justify-content: space-between; width: 100%; margin-top: 10px; }
+            .translate-wrapper { margin-right: 0; }
             .container { padding: 14px; }
         }
     </style>
@@ -510,23 +512,56 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         if(localStorage.getItem('theme') === 'light') { document.documentElement.setAttribute('data-theme', 'light'); }
         function toggleTheme() {
             const root = document.documentElement;
-            if (root.getAttribute('data-theme') === 'light') { root.removeAttribute('data-theme'); localStorage.setItem('theme', 'dark'); document.getElementById('themeIcon').innerText = '[Light]'; } 
-            else { root.setAttribute('data-theme', 'light'); localStorage.setItem('theme', 'light'); document.getElementById('themeIcon').innerText = '[Dark]'; }
+            if (root.getAttribute('data-theme') === 'light') { root.removeAttribute('data-theme'); localStorage.setItem('theme', 'dark'); document.getElementById('themeIcon').innerText = '🌞'; } 
+            else { root.setAttribute('data-theme', 'light'); localStorage.setItem('theme', 'light'); document.getElementById('themeIcon').innerText = '🌙'; }
         }
     </script>
 </head>
 <body>
     <div class="nav">
         <a href="/" class="nav-logo"><span class="logo-part1">ANIME</span><span class="logo-part2">HUB</span></a>
+        
         <div class="nav-icons">
+            <div class="translate-wrapper" id="google_translate_element"></div>
             <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">248.7K</span> Streaming</div>
-            <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">[Light]</div>
+            <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
         </div>
+
         <form class="search" action="/" method="GET">
             <input type="text" name="q" placeholder="Search anime, movies...">
             <button type="submit">Search</button>
         </form>
     </div>
+    
+    <script type="text/javascript">
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
+        }
+    </script>
+    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var bait = document.createElement('div');
+            bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad textAd text_ad text_ads text-ads text-ad-links';
+            bait.style.position = 'absolute';
+            bait.style.left = '-9999px';
+            bait.style.top = '-9999px';
+            document.body.appendChild(bait);
+            
+            setTimeout(function() {
+                if (bait.offsetHeight === 0 || window.getComputedStyle(bait).display === 'none') {
+                    document.documentElement.innerHTML = '<body style="margin:0;padding:0;background:#ffffff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui, sans-serif;color:#111;"><div style="text-align:center;max-width:600px;padding:20px;">' +
+                    '<h1 style="font-size:30px;font-weight:900;color:#ff3300;margin-bottom:15px;">Adblocker Detected!</h1>' +
+                    '<p style="font-size:18px;line-height:1.6;color:#333;margin-bottom:25px;">Kindly disable your adblocker and refresh the page to proceed. We rely on ads to keep our premium content free for everyone.</p>' +
+                    '<button onclick="location.reload()" style="padding:12px 28px;background:#ff5500;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(255,85,0,0.3);">I have disabled it, Refresh Page</button>' +
+                    '</div></body>';
+                }
+                bait.remove();
+            }, 500);
+        });
+    </script>
+
     <div class="marquee-container">
         <span class="marquee-tag">Notice</span>
         <marquee behavior="scroll" direction="left" scrollamount="5">${siteNotice}</marquee>
@@ -535,7 +570,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         [Click Here] Join Our Telegram Channel For Premium Direct Daily Anime Updates!
     </div>
     <script>
-        if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '[Dark]';
+        if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
         let baseLiveCount = 248700;
         setInterval(() => {
             baseLiveCount += Math.floor(Math.random() * 31) - 15; 
