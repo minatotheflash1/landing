@@ -11,11 +11,9 @@ const cors = require('cors');
 
 const app = express();
 
-// Security Middleware (Relaxed CSP for Google Translate and Adsterra)
 app.use(helmet({ contentSecurityPolicy: false })); 
 app.use(cors());
 
-// Rate Limiting to prevent DDoS
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 200,
@@ -23,7 +21,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Database Connection
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -83,7 +80,6 @@ const getValidUrl = (url) => {
     return url;
 };
 
-// ADSTERRA AD CODES 
 const AD_POPUNDER = `<script src="https://watchingprefecture.com/8b/68/3d/8b683d2f51d3f07afad4fe0599539b5b.js"></script>`;
 const AD_SOCIAL_BAR = `<script src="https://watchingprefecture.com/97/65/84/9765849a19d69df50b6273f7a2477c7c.js"></script>`;
 const AD_NATIVE_BANNER = `<script async="async" data-cfasync="false" src="https://watchingprefecture.com/f8e4e7aac8b848ebc1897089138e92ae/invoke.js"></script><div id="container-f8e4e7aac8b848ebc1897089138e92ae"></div>`;
@@ -91,7 +87,6 @@ const AD_NATIVE_BANNER = `<script async="async" data-cfasync="false" src="https:
 const bootLink1 = "https://watchingprefecture.com/frdcc5tt?key=eb74a3263961d6a2dd0b1af92384fab6";
 const link3 = "https://watchingprefecture.com/narj94mqa7?key=e1d970186b27618a729bae48455d4f53";
 
-// REAL-TIME & VISITORS TRACKER
 const activeUsersMap = new Map();
 
 const trackActiveUser = (ip) => {
@@ -126,10 +121,9 @@ const getSiteNotice = async () => {
         const res = await pool.query("SELECT value FROM settings WHERE key = 'site_notice'");
         if (res.rows.length > 0 && res.rows[0].value) return res.rows[0].value;
     } catch (e) {}
-    return "[Trending] Watch Premium Subbed and Dubbed Anime for Free. VIP Servers running!";
+    return "Watch Premium Subbed and Dubbed Anime for Free. VIP Servers running!";
 };
 
-// TELEGRAM BOT SETUP
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 bot.on('polling_error', (error) => {
@@ -334,7 +328,6 @@ bot.on('callback_query', async (callbackQuery) => {
     bot.answerCallbackQuery(callbackQuery.id);
 });
 
-// Media System Pipeline
 app.get('/image/:file_id', async (req, res) => {
     try {
         const fileLink = await bot.getFileLink(req.params.file_id);
@@ -413,7 +406,6 @@ const getBootLogic = () => {
     </script>`;
 };
 
-// PREMIUM WEBPAGE LAYOUT
 const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -458,7 +450,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         .logo-part2 { color: var(--text); font-style: italic; }
         
         .nav-icons { display: flex; gap: 16px; align-items: center; }
-        .theme-toggle { font-size: 20px; cursor: pointer; background: var(--btn-alt); padding: 8px; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
+        .theme-toggle { font-size: 14px; font-weight: bold; cursor: pointer; background: var(--btn-alt); padding: 8px 12px; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text); }
         .live-badge { display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 30px; }
         .live-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: blink 1.2s infinite alternate; }
         
@@ -466,18 +458,18 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         .search input { padding: 11px 18px; width: 100%; border-radius: 30px; border: 1px solid var(--border); outline: none; background: var(--btn-alt); color: var(--text); font-size: 14px; padding-right: 85px; }
         .search button { position: absolute; right: 4px; top: 4px; bottom: 4px; border-radius: 30px; padding: 0 16px; background: linear-gradient(135deg, #ff6a00, #ff3300); color: #fff; border: none; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 6px rgba(255,51,0,0.2); }
         
-        /* Translate specific styles */
-        .translate-wrapper { display: flex; align-items: center; margin-right: 15px; }
-        .goog-te-gadget-simple { background-color: var(--btn-alt) !important; border: 1px solid var(--border) !important; border-radius: 8px; padding: 6px !important; }
-        .goog-te-gadget-simple span { color: var(--text) !important; font-family: system-ui, sans-serif !important; }
-        .goog-te-gadget-icon { display: none; }
-
         .marquee-container { background: rgba(255, 85, 0, 0.06); color: var(--text); padding: 8px 0; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
         .marquee-tag { background: var(--primary); color: #fff; padding: 3px 8px; font-size: 11px; font-weight: 800; border-radius: 4px; margin-left: 20px; margin-right: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         
         .container { padding: 24px; max-width: 1300px; margin: auto; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; padding: 20px 0; }
         
+        .category-filters { display: flex; gap: 12px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: none; }
+        .category-filters::-webkit-scrollbar { display: none; }
+        .filter-btn { padding: 8px 18px; background: var(--btn-alt); color: var(--meta); border-radius: 20px; text-decoration: none; font-size: 14px; font-weight: bold; border: 1px solid var(--border); white-space: nowrap; transition: all 0.3s ease; }
+        .filter-btn:hover { background: var(--card-hover); color: var(--text); }
+        .filter-btn.active { background: linear-gradient(135deg, #ff6a00, #ff3300); color: #fff; border-color: transparent; box-shadow: 0 4px 10px rgba(255,85,0,0.3); }
+
         .card { background: var(--card-bg); border-radius: 16px; overflow: hidden; cursor: pointer; border: 1px solid var(--border); position: relative; transform: translateY(0); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, border-color 0.25s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px -5px rgba(0,0,0,0.3), 0 0 15px var(--primary-glow); border-color: rgba(255,85,0,0.3); background: var(--card-hover); }
         .card-img-wrapper { width: 100%; aspect-ratio: 2/3; position: relative; background: #000; overflow: hidden; }
@@ -504,7 +496,6 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
             .search { max-width: 100%; }
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
             .nav-icons { position: relative; justify-content: space-between; width: 100%; margin-top: 10px; }
-            .translate-wrapper { margin-right: 0; }
             .container { padding: 14px; }
         }
     </style>
@@ -512,8 +503,8 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         if(localStorage.getItem('theme') === 'light') { document.documentElement.setAttribute('data-theme', 'light'); }
         function toggleTheme() {
             const root = document.documentElement;
-            if (root.getAttribute('data-theme') === 'light') { root.removeAttribute('data-theme'); localStorage.setItem('theme', 'dark'); document.getElementById('themeIcon').innerText = '🌞'; } 
-            else { root.setAttribute('data-theme', 'light'); localStorage.setItem('theme', 'light'); document.getElementById('themeIcon').innerText = '🌙'; }
+            if (root.getAttribute('data-theme') === 'light') { root.removeAttribute('data-theme'); localStorage.setItem('theme', 'dark'); document.getElementById('themeIcon').innerText = '[Light]'; } 
+            else { root.setAttribute('data-theme', 'light'); localStorage.setItem('theme', 'light'); document.getElementById('themeIcon').innerText = '[Dark]'; }
         }
     </script>
 </head>
@@ -522,9 +513,8 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         <a href="/" class="nav-logo"><span class="logo-part1">ANIME</span><span class="logo-part2">HUB</span></a>
         
         <div class="nav-icons">
-            <div class="translate-wrapper" id="google_translate_element"></div>
             <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">248.7K</span> Streaming</div>
-            <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌞</div>
+            <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">[Light]</div>
         </div>
 
         <form class="search" action="/" method="GET">
@@ -532,14 +522,6 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
             <button type="submit">Search</button>
         </form>
     </div>
-    
-    <!-- Google Translate Script -->
-    <script type="text/javascript">
-        function googleTranslateElementInit() {
-            new google.translate.TranslateElement({pageLanguage: 'en', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
-        }
-    </script>
-    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
     <!-- Adblocker Detection Logic -->
     <script>
@@ -588,7 +570,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         [Click Here] Join Our Telegram Channel For Premium Direct Daily Anime Updates!
     </div>
     <script>
-        if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '🌙';
+        if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '[Dark]';
         let baseLiveCount = 248700;
         setInterval(() => {
             baseLiveCount += Math.floor(Math.random() * 31) - 15; 
@@ -618,19 +600,24 @@ const renderCards = (posts) => {
 
 app.get('/', async (req, res) => {
     const searchQuery = req.query.q;
+    const sortParam = req.query.sort || 'latest';
     const page = parseInt(req.query.page) || 1;
     const limit = 24;
     const offset = (page - 1) * limit;
+
+    let orderClause = 'ORDER BY id DESC';
+    if (sortParam === 'views') orderClause = 'ORDER BY views DESC, id DESC';
+    else if (sortParam === 'oldest') orderClause = 'ORDER BY id ASC';
 
     try {
         let result;
         let totalCountRes;
 
         if (searchQuery) {
-            result = await pool.query("SELECT * FROM posts WHERE title ILIKE $1 ORDER BY id DESC LIMIT $2 OFFSET $3", [`%${searchQuery}%`, limit, offset]);
+            result = await pool.query(`SELECT * FROM posts WHERE title ILIKE $1 ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
             totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE title ILIKE $1", [`%${searchQuery}%`]);
         } else {
-            result = await pool.query("SELECT * FROM posts ORDER BY id DESC LIMIT $1 OFFSET $2", [limit, offset]);
+            result = await pool.query(`SELECT * FROM posts ${orderClause} LIMIT $1 OFFSET $2`, [limit, offset]);
             totalCountRes = await pool.query("SELECT COUNT(*) FROM posts");
         }
 
@@ -643,9 +630,10 @@ app.get('/', async (req, res) => {
 
         let paginationHtml = '';
         if (totalPages > 1) {
+            const queryParams = `${searchQuery ? '&q=' + searchQuery : ''}&sort=${sortParam}`;
             paginationHtml = `<div class="pagination">`;
-            if (page > 1) paginationHtml += `<a href="/?page=${page - 1}${searchQuery ? '&q=' + searchQuery : ''}" class="page-btn">Previous</a>`;
-            if (page < totalPages) paginationHtml += `<a href="/?page=${page + 1}${searchQuery ? '&q=' + searchQuery : ''}" class="page-btn">Next Page</a>`;
+            if (page > 1) paginationHtml += `<a href="/?page=${page - 1}${queryParams}" class="page-btn">Previous</a>`;
+            if (page < totalPages) paginationHtml += `<a href="/?page=${page + 1}${queryParams}" class="page-btn">Next Page</a>`;
             paginationHtml += `</div>`;
         }
 
@@ -653,8 +641,15 @@ app.get('/', async (req, res) => {
             ${getHeader('AnimeHub - Premium HD Streaming Platform', metaTags, siteNotice)}
             <div class="container">
                 <div style="margin: 5px auto 25px auto; text-align: center; min-height: 60px;">${AD_NATIVE_BANNER}</div>
-                <h2 style="margin: 0; font-size: 22px; font-weight: 800; color: var(--text); border-left: 5px solid var(--primary); padding-left: 14px; letter-spacing: -0.3px;">${searchQuery ? 'Search Discovery Results' : 'Dynamic Hot and Trending'}</h2>
-                <div class="grid" style="margin-top: 24px;">${renderCards(result.rows) || '<p style="color:var(--meta); text-align: center; width: 100%; padding: 40px 0;">No matching indexing blocks located inside database.</p>'}</div>
+                
+                ${searchQuery ? `<h2 style="margin: 0 0 20px 0; font-size: 22px; font-weight: 800; color: var(--text); border-left: 5px solid var(--primary); padding-left: 14px;">Search Results for "${searchQuery}"</h2>` : `
+                <div class="category-filters">
+                    <a href="/?sort=latest" class="filter-btn ${sortParam === 'latest' ? 'active' : ''}">Latest Releases</a>
+                    <a href="/?sort=views" class="filter-btn ${sortParam === 'views' ? 'active' : ''}">Most Viewed</a>
+                    <a href="/?sort=oldest" class="filter-btn ${sortParam === 'oldest' ? 'active' : ''}">Oldest</a>
+                </div>`}
+
+                <div class="grid">${renderCards(result.rows) || '<p style="color:var(--meta); text-align: center; width: 100%; padding: 40px 0;">No matching indexing blocks located inside database.</p>'}</div>
                 ${paginationHtml}
             </div>
             ${bootScript}
@@ -702,6 +697,9 @@ app.get('/post/:slug', async (req, res) => {
                 #videoPlayerContainer { display: none; width: 100%; background: #000; padding: 12px 0; }
                 video#mainVideoPlayer { width: 100%; max-height: 550px; outline: none; border: 3px solid var(--primary); border-radius: 12px; box-shadow: 0 10px 40px rgba(255, 85, 0, 0.25); }
                 @keyframes pulseGlow { 0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgba(255,85,0,0.7); } 70% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 0 15px rgba(255,85,0,0); } 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgba(255,85,0,0); } }
+                
+                .share-btn { margin-left: 10px; background: var(--btn-alt); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; cursor: pointer; }
+                .share-btn:hover { background: var(--card-hover); }
             </style>
 
             <div class="container">
@@ -725,7 +723,10 @@ app.get('/post/:slug', async (req, res) => {
 
                     <div style="padding: 30px;">
                         <h1 style="margin: 0 0 16px 0; font-size: 26px; font-weight: 850; line-height: 1.3; letter-spacing: -0.4px;">${post.title}</h1>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;">${tagsHtml}</div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; align-items: center;">
+                            ${tagsHtml}
+                            <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href); alert('Link copied to clipboard!');">Copy Share Link</button>
+                        </div>
                         
                         <div style="display: flex; gap: 12px; margin-bottom: 24px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
                             <span style="background: var(--btn-alt); padding: 6px 14px; border-radius: 30px; font-weight: bold; border: 1px solid var(--border);">Views: ${uiFakeViews}</span>
