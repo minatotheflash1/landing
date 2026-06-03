@@ -880,11 +880,43 @@ app.get('/out/:slug', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => {
     try {
         const result = await pool.query("SELECT slug FROM posts");
-        let xml = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
-        result.rows.forEach(p => { xml += `<url><loc>${process.env.WEBSITE_URL}/post/${p.slug}</loc></url>`; });
-        xml += '</urlset>';
-        res.header('Content-Type', 'application/xml'); res.send(xml);
-    } catch (e) { res.status(500).send("Sitemap pipeline structural failure"); }
+        
+        // Apnar upload kora static sitemap er uporer onghsho (Main pages)
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+  <url>
+    <loc>https://watchmovie.pro/</loc>
+    <priority>1.00</priority>
+  </url>
+  <url>
+    <loc>https://watchmovie.pro/?sort=latest</loc>
+    <priority>0.80</priority>
+  </url>
+  <url>
+    <loc>https://watchmovie.pro/?sort=views</loc>
+    <priority>0.80</priority>
+  </url>
+  <url>
+    <loc>https://watchmovie.pro/?sort=oldest</loc>
+    <priority>0.80</priority>
+  </url>`;
+
+        // Database theke automatic asha post gulor link (Dynamic pages)
+        result.rows.forEach(p => {
+            xml += `
+  <url>
+    <loc>https://watchmovie.pro/post/${p.slug}</loc>
+    <priority>0.80</priority>
+  </url>`;
+        });
+
+        xml += '\n</urlset>';
+        
+        res.header('Content-Type', 'application/xml'); 
+        res.send(xml);
+    } catch (e) { 
+        res.status(500).send("Sitemap pipeline structural failure"); 
+    }
 });
 
 app.listen(process.env.PORT || 3000, () => console.log('System operational node successfully initialized on target port configuration.'));
