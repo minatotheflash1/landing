@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -328,6 +330,18 @@ bot.on('callback_query', async (callbackQuery) => {
     bot.answerCallbackQuery(callbackQuery.id);
 });
 
+// 🚀 Dynamic Favicon (Tab Icon) Route - Eta diye website tab icon dhore nibe
+app.get('/favicon.ico', (req, res) => {
+    const extensions = ['.png', '.jpg', '.jpeg', '.ico'];
+    for (let ext of extensions) {
+        const filePath = path.join(__dirname, 'icon' + ext);
+        if (fs.existsSync(filePath)) {
+            return res.sendFile(filePath);
+        }
+    }
+    res.status(204).end(); // Jodi kono icon na thake tobe error dibe na
+});
+
 app.get('/image/:file_id', async (req, res) => {
     try {
         const fileLink = await bot.getFileLink(req.params.file_id);
@@ -414,6 +428,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     ${metaTagsStr}
     <title>${title}</title>
+    <link rel="icon" href="/favicon.ico">
     ${AD_POPUNDER}
     ${AD_SOCIAL_BAR}
     <style>
