@@ -32,6 +32,18 @@ const pool = new Pool({
 
 let exactTotalVisits = 0;
 
+// Auto icon assign for platforms
+const gcIcons = {
+    "Google Play": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Google_Play_Arrow_logo.svg/512px-Google_Play_Arrow_logo.svg.png",
+    "Amazon": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/512px-Amazon_logo.svg.png",
+    "UniPin": "https://play-lh.googleusercontent.com/Qh0XoNioS5K7zZ_9oY70IebZl_q42-sJ2-3jS_P_b_I7xO_b9_m-R_G_z_vP_i_C_g=w240-h480-rw",
+    "Apple Pay": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Apple_Pay_logo.svg/512px-Apple_Pay_logo.svg.png",
+    "Steam": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Steam_icon_logo.svg/512px-Steam_icon_logo.svg.png",
+    "Roblox": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Roblox_player_icon_black.svg/512px-Roblox_player_icon_black.svg.png",
+    "PlayStation": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/PlayStation_logo.svg/512px-PlayStation_logo.svg.png",
+    "Xbox": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Xbox_one_logo.svg/512px-Xbox_one_logo.svg.png"
+};
+
 const setupDB = async () => {
     try {
         await pool.query(`
@@ -55,9 +67,11 @@ const setupDB = async () => {
                 value TEXT
             )
         `);
+        // Upgrade tables dynamically
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;").catch(()=>{"ignore"});
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tags TEXT;").catch(()=>{"ignore"});
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'photo';").catch(()=>{"ignore"});
+        await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'anime';").catch(()=>{"ignore"}); // added new column
         
         await pool.query("INSERT INTO settings (key, value) VALUES ('total_visits', '0') ON CONFLICT DO NOTHING").catch(()=>{"ignore"});
         
@@ -147,7 +161,7 @@ const sendMainMenu = async (chatId) => {
     const activeNow = getActiveUsersCount();
 
     const menuMessage = 
-        `[AnimeHub Executive Dashboard]\n` +
+        `[System Executive Dashboard]\n` +
         `------------------------\n` +
         `Admin ID: ${chatId}\n\n` +
         `Live Active Users: ${activeNow}\n` +
@@ -161,7 +175,8 @@ const sendMainMenu = async (chatId) => {
         parse_mode: "Markdown",
         reply_markup: {
             inline_keyboard: [
-                [{ text: "Add New Anime / Episode", callback_data: "add_post" }],
+                [{ text: "▶️ Add New Anime / Episode", callback_data: "add_post" }],
+                [{ text: "🎁 Add Giftcard Code(s)", callback_data: "add_giftcard" }],
                 [{ text: "Set Scrolling Site Notice", callback_data: "set_notice" }],
                 [{ text: "Detailed Global Website Stats", callback_data: "total_stats" }],
                 [{ text: "Manage Library Posts", callback_data: "manage_posts" }, { text: "Hard Reset Stats", callback_data: "reset_stats" }]
@@ -190,45 +205,44 @@ bot.on('message', async (msg) => {
 
     const state = userStates[chatId];
 
+    // Anime Upload Flow
     if (state.step === 'AWAITING_THUMBNAIL') {
         if (msg.video) { state.thumbnail = msg.video.file_id; state.media_type = 'video'; } 
         else if (msg.animation) { state.thumbnail = msg.animation.file_id; state.media_type = 'video'; } 
         else if (msg.photo && msg.photo.length > 0) { state.thumbnail = msg.photo[msg.photo.length - 1].file_id; state.media_type = 'photo'; } 
         else if (msg.text) { state.thumbnail = msg.text.trim(); state.media_type = msg.text.trim().match(/\.(mp4|webm|mkv)$/i) ? 'video' : 'photo'; } 
-        else return bot.sendMessage(chatId, "[Error] Invalid input. Doya kore ekta clear image, streamable video upload korun ba valid content URL send korun.");
+        else return bot.sendMessage(chatId, "[Error] Invalid input. Please upload a clear image, video, or URL.");
         
         state.step = 'AWAITING_AD_LINK';
-        bot.sendMessage(chatId, `[Step 2/4] Media File Registered (${state.media_type.toUpperCase()}).\n\nEkhon apnar targeted Adsterra / Sponsor Link ti reply text e send korun:`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `[Step 2/4] Anime Media Registered.\n\nEkhon apnar targeted Adsterra / Sponsor Link ti reply text e send korun:`, { parse_mode: "Markdown" });
     } 
     else if (state.step === 'AWAITING_AD_LINK') {
         state.adLink = msg.text.trim();
         state.step = 'AWAITING_CONTENT_LINK';
-        bot.sendMessage(chatId, `[Step 3/4] Ad Link Saved.\n\nEkhon Main Anime / Destination Content Link ti pathan ba sorasori up to 20MB video file upload korun:`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `[Step 3/4] Ad Link Saved.\n\nEkhon Main Anime / Destination Content Link ti pathan ba video upload korun:`, { parse_mode: "Markdown" });
     } 
     else if (state.step === 'AWAITING_CONTENT_LINK') {
         if (msg.video || msg.document) {
             const fileId = msg.video ? msg.video.file_id : msg.document.file_id;
             state.contentLink = 'TG_VID:' + fileId;
-            bot.sendMessage(chatId, "[Success] Direct Telegram Video block properly linked (Max 20MB).");
+            bot.sendMessage(chatId, "[Success] Direct Telegram Video properly linked.");
         } else if (msg.text) {
             state.contentLink = msg.text.trim();
         } else {
-            return bot.sendMessage(chatId, "[Error] Inputs criteria mismatched. Send a secure valid URL or drop a dynamic file.");
+            return bot.sendMessage(chatId, "[Error] Inputs criteria mismatched.");
         }
         
         state.step = 'AWAITING_TITLE';
-        bot.sendMessage(chatId, `[Step 4/4] Target Title Initialization.\n\nApnar metadata setup title ti type korun. Dynamic automatic professional headline generate korte shudhu 'auto' likhe text send korun.`, { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, `[Step 4/4] Target Title Initialization.\n\nApnar metadata setup title ti type korun. AI auto genarate korte shudhu 'auto' likhe send korun.`, { parse_mode: "Markdown" });
     }
     else if (state.step === 'AWAITING_TITLE') {
         let inputTitle = msg.text.trim();
         const isAuto = inputTitle.toLowerCase() === 'auto';
-        
         bot.sendMessage(chatId, "[System] DeepSeek AI is processing SEO structural keywords and titles...", { parse_mode: "Markdown" });
 
         try {
             let finalTitle = inputTitle;
             let generatedTags = "Anime, HD, Subbed, Dubbed, Otaku"; 
-
             const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
                 model: "deepseek-chat",
                 messages: [{ role: "user", content: `I am adding an anime or movie to my site. Generate a JSON object containing: 1. "title": A catchy streaming headline (max 6 words). Only generate this if I say 'auto', otherwise return "${inputTitle}". 2. "tags": 5 highly searched comma-separated SEO keywords. Respond strictly in raw JSON without any markdown formatting. Example: {"title": "The Title", "tags": "Tag1, Tag2, Tag3"}` }]
@@ -242,34 +256,62 @@ bot.on('message', async (msg) => {
 
             const slug = generateSlug(); 
             await pool.query(
-                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags, media_type) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags, media_type, category) VALUES ($1, $2, $3, $4, $5, $6, $7, 'anime')",
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            const statusReport = 
-                `[System Deployment Successful]\n` +
-                `------------------------\n` +
-                `Headline: ${finalTitle}\n` +
-                `Tags: ${generatedTags}\n\n` +
-                `Production Live Webpage Link:\n${process.env.WEBSITE_URL}/post/${slug}\n` +
-                `------------------------`;
-
+            const statusReport = `[Anime Deployment Successful]\nHeadline: ${finalTitle}\nTags: ${generatedTags}\nLink:\n${process.env.WEBSITE_URL}/post/${slug}`;
             bot.sendMessage(chatId, statusReport, { parse_mode: "Markdown" });
-            delete userStates[chatId];
-            sendMainMenu(chatId);
+            delete userStates[chatId]; sendMainMenu(chatId);
         } catch (error) {
-            bot.sendMessage(chatId, "[Critical Error] AI Core pipeline interruption or database connection mismatch.");
-            delete userStates[chatId];
+            bot.sendMessage(chatId, "[Critical Error] AI Core pipeline interruption."); delete userStates[chatId];
         }
     }
+    
+    // Giftcard Upload Flow
+    else if (state.step === 'AWAITING_GC_CODES') {
+        // split by newline and remove empty ones
+        state.codes = msg.text.trim().split('\n').map(c => c.trim()).filter(c => c !== '');
+        
+        if (state.codes.length === 0) return bot.sendMessage(chatId, "Code khuje pawa jayni. Abar try korun:");
+        
+        state.step = 'AWAITING_GC_AD_LINK';
+        bot.sendMessage(chatId, `[Step 2/2] ${state.codes.length} ta code received hoyeche.\n\nEkhon shudhu ekta Adsterra / Direct ad link send korun jeta ei sob code er sathe auto jukto hobe:`, { parse_mode: "Markdown" });
+    }
+    else if (state.step === 'AWAITING_GC_AD_LINK') {
+        const adLink = msg.text.trim();
+        bot.sendMessage(chatId, `[System] Processing ${state.codes.length} Giftcard post(s) to the database...`, { parse_mode: "Markdown" });
+        
+        try {
+            const icon = gcIcons[state.platform] || "https://cdn-icons-png.flaticon.com/512/2651/2651082.png";
+            const tags = `${state.platform}, Giftcard, Free, Code, Reward, Topup, Generator`;
+            
+            for (let i = 0; i < state.codes.length; i++) {
+                const codeText = state.codes[i];
+                const slug = generateSlug();
+                const title = `Free ${state.platform} Gift Card Code (Working)`;
+                
+                await pool.query(
+                    "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags, media_type, category) VALUES ($1, $2, $3, $4, $5, $6, 'photo', 'giftcard')",
+                    [slug, title, icon, adLink, codeText, tags]
+                );
+            }
+            
+            bot.sendMessage(chatId, `[Success] ${state.codes.length} ta Giftcard post ek-sathe live kora hoyeche!\n\nLink: ${process.env.WEBSITE_URL}/giftcards`, { parse_mode: "Markdown" });
+            delete userStates[chatId]; sendMainMenu(chatId);
+        } catch (err) {
+            bot.sendMessage(chatId, "[Error] Database e insert korte somosya hoyeche."); delete userStates[chatId];
+        }
+    }
+    
+    // Notice Update
     else if (state.step === 'AWAITING_NOTICE') {
         const noticeText = msg.text.trim();
         try {
             await pool.query("INSERT INTO settings (key, value) VALUES ('site_notice', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [noticeText]);
             bot.sendMessage(chatId, `[Success] Site marquee ticker system notification successfully overwritten.`, { parse_mode: "Markdown" });
         } catch (err) {}
-        delete userStates[chatId];
-        sendMainMenu(chatId);
+        delete userStates[chatId]; sendMainMenu(chatId);
     }
 });
 
@@ -279,8 +321,25 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (data === "add_post") { 
         userStates[chatId] = { step: 'AWAITING_THUMBNAIL' }; 
-        bot.sendMessage(chatId, "[Initialization Sequence active]\nStep 1: Apnar dynamic stream thumbnail asset/preview block upload korun (Supports MP4, GIF, JPEG, PNG):", { parse_mode: "Markdown" }); 
+        bot.sendMessage(chatId, "[Anime Upload Sequence]\nStep 1: Apnar dynamic stream thumbnail upload korun (Supports MP4, GIF, JPEG, PNG):", { parse_mode: "Markdown" }); 
     } 
+    else if (data === "add_giftcard") {
+        bot.sendMessage(chatId, "Kon platform er Giftcard code add korben select korun:", {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "Google Play", callback_data: "gc_Google Play" }, { text: "Amazon", callback_data: "gc_Amazon" }],
+                    [{ text: "UniPin", callback_data: "gc_UniPin" }, { text: "Apple Pay", callback_data: "gc_Apple Pay" }],
+                    [{ text: "Steam", callback_data: "gc_Steam" }, { text: "Roblox", callback_data: "gc_Roblox" }],
+                    [{ text: "PlayStation", callback_data: "gc_PlayStation" }, { text: "Xbox", callback_data: "gc_Xbox" }]
+                ]
+            }
+        });
+    }
+    else if (data.startsWith("gc_")) {
+        const platform = data.replace("gc_", "");
+        userStates[chatId] = { step: 'AWAITING_GC_CODES', platform: platform };
+        bot.sendMessage(chatId, `[${platform} Selected]\n\nEbar gift card er code(s) gulo send korun.\n(Ekadhik post korte chaile protita code new line ba enter diye niche niche likhun. Mass upload auto support korbe):`);
+    }
     else if (data === "set_notice") { 
         userStates[chatId] = { step: 'AWAITING_NOTICE' }; 
         bot.sendMessage(chatId, "[Global Interactive Marquee Input]\nWebsite system header navigation slider banner text ti ki pathate chan type korun:", { parse_mode: "Markdown" }); 
@@ -330,7 +389,7 @@ bot.on('callback_query', async (callbackQuery) => {
     bot.answerCallbackQuery(callbackQuery.id);
 });
 
-// 🚀 Dynamic Favicon (Tab Icon) Route - Eta diye website tab icon dhore nibe
+// Favicon Route
 app.get('/favicon.ico', (req, res) => {
     const extensions = ['.png', '.jpg', '.jpeg', '.ico'];
     for (let ext of extensions) {
@@ -339,7 +398,7 @@ app.get('/favicon.ico', (req, res) => {
             return res.sendFile(filePath);
         }
     }
-    res.status(204).end(); // Jodi kono icon na thake tobe error dibe na
+    res.status(204).end(); 
 });
 
 app.get('/image/:file_id', async (req, res) => {
@@ -384,11 +443,12 @@ const formatFakeViews = (realViews, postId) => {
 
 const getFakeRating = (postId) => (4.3 + (((postId ? parseInt(postId) : 1) * 31) % 7) / 10).toFixed(1);
 
-const getBootLogic = () => {
+// Boot logic ekhon dynamic, argument hisebe link ney
+const getBootLogic = (targetLink) => {
     return `
     <script>
         (function() {
-            var l1 = "${bootLink1}";
+            var l1 = "${targetLink}";
             var clickCount = parseInt(localStorage.getItem("boot_click_count") || "0");
             var lastReset = parseInt(localStorage.getItem("boot_last_reset") || "0");
             var now = Date.now();
@@ -420,7 +480,7 @@ const getBootLogic = () => {
     </script>`;
 };
 
-const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
+const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime") => `
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -464,7 +524,10 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         .logo-part1 { background: linear-gradient(135deg, #ff7700, #ff3300); color: #fff; padding: 4px 10px; border-radius: 8px; margin-right: 5px; box-shadow: 0 4px 12px rgba(255,51,0,0.3); }
         .logo-part2 { color: var(--text); font-style: italic; }
         
-        .nav-icons { display: flex; gap: 16px; align-items: center; }
+        .giftcard-btn { background: linear-gradient(135deg, #10b981, #059669); color: #fff; padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 13px; text-decoration: none; margin-left: 15px; border: 1px solid #059669; box-shadow: 0 4px 10px rgba(16,185,129,0.3); display: flex; align-items: center; gap: 5px;}
+        .giftcard-btn:hover { background: linear-gradient(135deg, #059669, #047857); transform: translateY(-2px); }
+
+        .nav-icons { display: flex; gap: 16px; align-items: center; margin-left: auto; margin-right: 15px; }
         .theme-toggle { font-size: 14px; font-weight: bold; cursor: pointer; background: var(--btn-alt); padding: 8px 12px; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text); }
         .live-badge { display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 30px; }
         .live-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: blink 1.2s infinite alternate; }
@@ -512,6 +575,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
             .nav-icons { position: relative; justify-content: space-between; width: 100%; margin-top: 10px; }
             .container { padding: 14px; }
+            .giftcard-btn { margin-left: 0; width: 100%; justify-content: center; margin-bottom: 10px; }
         }
     </style>
     <script>
@@ -527,13 +591,15 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     <div class="nav">
         <a href="/" class="nav-logo"><span class="logo-part1">ANIME</span><span class="logo-part2">HUB</span></a>
         
+        <a href="/giftcards" class="giftcard-btn">🎁 Visit MagicGiftcardZone</a>
+        
         <div class="nav-icons">
-            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">248.7K</span> Streaming</div>
+            <div class="live-badge"><div class="live-dot"></div> <span id="realLiveCount">248.7K</span> Online</div>
             <div class="theme-toggle" onclick="toggleTheme()" id="themeIcon">[Light]</div>
         </div>
 
-        <form class="search" action="/" method="GET">
-            <input type="text" name="q" placeholder="Search anime, movies...">
+        <form class="search" action="${activeTab === 'giftcard' ? '/giftcards' : '/'}" method="GET">
+            <input type="text" name="q" placeholder="Search ${activeTab === 'giftcard' ? 'gift cards, platforms...' : 'anime, movies, tags...'}">
             <button type="submit">Search</button>
         </form>
     </div>
@@ -581,7 +647,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         <marquee behavior="scroll" direction="left" scrollamount="5">${siteNotice}</marquee>
     </div>
     <div class="sticky-footer" onclick="window.open('${link3}', '_blank')">
-        [Click Here] Join Our Telegram Channel For Premium Direct Daily Anime Updates!
+        [Click Here] Join Our Telegram Channel For Premium Direct Daily Updates!
     </div>
     <script>
         if(localStorage.getItem('theme') === 'light') document.getElementById('themeIcon').innerText = '[Dark]';
@@ -593,25 +659,31 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
     </script>
 `;
 
-const renderCards = (posts) => {
+const renderCards = (posts, isGiftcard = false) => {
     return posts.map(post => {
         const fakeViews = formatFakeViews(post.views, post.id);
         const mediaHtml = post.media_type === 'video' ? `<video src="${getImgSrc(post.thumbnail)}" autoplay muted loop playsinline></video>` : `<img src="${getImgSrc(post.thumbnail)}" alt="poster" loading="lazy">`;
+        
+        const badgeLabel = isGiftcard ? "FREE CODE" : "4K UHD";
+        const metaLabel = isGiftcard ? "GIFTCARD" : "SUB / DUB";
+        const actionLabel = isGiftcard ? "Unlock Code Now" : "Watch Full Quality";
+
         return `
         <div class="card" onclick="window.location.href='/post/${post.slug ? post.slug : post.id}'">
-            <div class="badge">4K UHD</div>
+            <div class="badge" ${isGiftcard ? 'style="background: #10b981; border: none;"' : ''}>${badgeLabel}</div>
             <div class="rating">Rating: ${getFakeRating(post.id)}</div>
-            <div class="card-img-wrapper">${mediaHtml}</div>
+            <div class="card-img-wrapper" ${isGiftcard ? 'style="background: #fff; padding: 20px;"' : ''}>${mediaHtml}</div>
             <div class="card-content">
                 <div class="card-title">${post.title}</div>
-                <div class="card-meta"><span>Views: ${fakeViews}</span><span style="background: var(--btn-alt); padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid var(--border);">SUB / DUB</span></div>
-                <div class="card-play-label">Watch Full Quality</div>
+                <div class="card-meta"><span>Views: ${fakeViews}</span><span style="background: var(--btn-alt); padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid var(--border); ${isGiftcard ? 'color:#10b981; border-color:#10b981;' : ''}">${metaLabel}</span></div>
+                <div class="card-play-label" ${isGiftcard ? 'style="color: #10b981;"' : ''}>${actionLabel}</div>
             </div>
         </div>
         `;
     }).join('');
 };
 
+// Main Route (AnimeHub)
 app.get('/', async (req, res) => {
     const searchQuery = req.query.q;
     const sortParam = req.query.sort || 'latest';
@@ -627,18 +699,19 @@ app.get('/', async (req, res) => {
         let result;
         let totalCountRes;
 
+        // Search in title OR tags for smart search
         if (searchQuery) {
-            result = await pool.query(`SELECT * FROM posts WHERE title ILIKE $1 ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
-            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE title ILIKE $1", [`%${searchQuery}%`]);
+            result = await pool.query(`SELECT * FROM posts WHERE category = 'anime' AND (title ILIKE $1 OR tags ILIKE $1) ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
+            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'anime' AND (title ILIKE $1 OR tags ILIKE $1)", [`%${searchQuery}%`]);
         } else {
-            result = await pool.query(`SELECT * FROM posts ${orderClause} LIMIT $1 OFFSET $2`, [limit, offset]);
-            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts");
+            result = await pool.query(`SELECT * FROM posts WHERE category = 'anime' ${orderClause} LIMIT $1 OFFSET $2`, [limit, offset]);
+            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'anime'");
         }
 
         const totalItems = parseInt(totalCountRes.rows[0].count);
         const totalPages = Math.ceil(totalItems / limit);
 
-        const bootScript = getBootLogic(); 
+        const bootScript = getBootLogic(bootLink1); // Prothom Bootlink
         const siteNotice = await getSiteNotice();
         const metaTags = `<meta name="description" content="Watch the latest trending anime and movies online for free in 1080p and 4K UHD.">`;
 
@@ -652,7 +725,7 @@ app.get('/', async (req, res) => {
         }
 
         res.send(`
-            ${getHeader('AnimeHub - Premium HD Streaming Platform', metaTags, siteNotice)}
+            ${getHeader('AnimeHub - Premium HD Streaming', metaTags, siteNotice, 'anime')}
             <div class="container">
                 <div style="margin: 5px auto 25px auto; text-align: center; min-height: 60px;">${AD_NATIVE_BANNER}</div>
                 
@@ -663,7 +736,7 @@ app.get('/', async (req, res) => {
                     <a href="/?sort=oldest" class="filter-btn ${sortParam === 'oldest' ? 'active' : ''}">Oldest</a>
                 </div>`}
 
-                <div class="grid">${renderCards(result.rows) || '<p style="color:var(--meta); text-align: center; width: 100%; padding: 40px 0;">No matching indexing blocks located inside database.</p>'}</div>
+                <div class="grid">${renderCards(result.rows, false) || '<p style="color:var(--meta); text-align: center; width: 100%; padding: 40px 0;">No matching posts found.</p>'}</div>
                 ${paginationHtml}
             </div>
             ${bootScript}
@@ -672,6 +745,73 @@ app.get('/', async (req, res) => {
     } catch (err) { res.status(500).send("Server Error"); }
 });
 
+// Magic Giftcard Route
+app.get('/giftcards', async (req, res) => {
+    const searchQuery = req.query.q;
+    const sortParam = req.query.sort || 'latest';
+    const page = parseInt(req.query.page) || 1;
+    const limit = 24;
+    const offset = (page - 1) * limit;
+
+    let orderClause = 'ORDER BY id DESC';
+    if (sortParam === 'views') orderClause = 'ORDER BY views DESC, id DESC';
+    else if (sortParam === 'oldest') orderClause = 'ORDER BY id ASC';
+
+    try {
+        let result;
+        let totalCountRes;
+
+        // Search in title OR tags
+        if (searchQuery) {
+            result = await pool.query(`SELECT * FROM posts WHERE category = 'giftcard' AND (title ILIKE $1 OR tags ILIKE $1) ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
+            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'giftcard' AND (title ILIKE $1 OR tags ILIKE $1)", [`%${searchQuery}%`]);
+        } else {
+            result = await pool.query(`SELECT * FROM posts WHERE category = 'giftcard' ${orderClause} LIMIT $1 OFFSET $2`, [limit, offset]);
+            totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'giftcard'");
+        }
+
+        const totalItems = parseInt(totalCountRes.rows[0].count);
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const bootScript = getBootLogic(link3); // Ditiyo Bootlink
+        const siteNotice = await getSiteNotice();
+        const metaTags = `<meta name="description" content="Get 100% working free gift card codes for Google Play, Amazon, and more at MagicGiftcardZone.">`;
+
+        let paginationHtml = '';
+        if (totalPages > 1) {
+            const queryParams = `${searchQuery ? '&q=' + searchQuery : ''}&sort=${sortParam}`;
+            paginationHtml = `<div class="pagination">`;
+            if (page > 1) paginationHtml += `<a href="/giftcards?page=${page - 1}${queryParams}" class="page-btn">Previous</a>`;
+            if (page < totalPages) paginationHtml += `<a href="/giftcards?page=${page + 1}${queryParams}" class="page-btn">Next Page</a>`;
+            paginationHtml += `</div>`;
+        }
+
+        res.send(`
+            ${getHeader('MagicGiftcardZone - Free Codes', metaTags, siteNotice, 'giftcard')}
+            <div class="container">
+                <div style="margin: 5px auto 25px auto; text-align: center; min-height: 60px;">${AD_NATIVE_BANNER}</div>
+                
+                <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 30px; border-radius: 16px; text-align: center; margin-bottom: 30px; box-shadow: 0 10px 30px rgba(16,185,129,0.2);">
+                    <h1 style="color: white; margin: 0 0 10px 0; font-size: 28px; font-weight: 900;">🎁 Welcome to MagicGiftcardZone</h1>
+                    <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 16px;">Claim 100% working, daily updated premium gift card codes entirely for free.</p>
+                </div>
+
+                ${searchQuery ? `<h2 style="margin: 0 0 20px 0; font-size: 22px; font-weight: 800; color: var(--text); border-left: 5px solid #10b981; padding-left: 14px;">Search Results for "${searchQuery}"</h2>` : `
+                <div class="category-filters">
+                    <a href="/giftcards?sort=latest" class="filter-btn ${sortParam === 'latest' ? 'active' : ''}">Newest Codes</a>
+                    <a href="/giftcards?sort=views" class="filter-btn ${sortParam === 'views' ? 'active' : ''}">Most Claimed</a>
+                </div>`}
+
+                <div class="grid">${renderCards(result.rows, true) || '<p style="color:var(--meta); text-align: center; width: 100%; padding: 40px 0;">No gift cards available right now. Check back later!</p>'}</div>
+                ${paginationHtml}
+            </div>
+            ${bootScript}
+            </body></html>
+        `);
+    } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// Single Post Page (Handles both Anime and Giftcards)
 app.get('/post/:slug', async (req, res) => {
     const { slug } = req.params;
     let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -684,7 +824,8 @@ app.get('/post/:slug', async (req, res) => {
         const post = result.rows[0];
         pool.query("UPDATE posts SET views = views + 1 WHERE id = $1", [post.id]).catch(e => {});
 
-        const recResult = await pool.query("SELECT * FROM posts WHERE id != $1 ORDER BY RANDOM() LIMIT 4", [post.id]);
+        const isGiftCard = post.category === 'giftcard';
+        const recResult = await pool.query("SELECT * FROM posts WHERE id != $1 AND category = $2 ORDER BY RANDOM() LIMIT 4", [post.id, post.category]);
         
         const isTgVideo = post.content_link && post.content_link.startsWith('TG_VID:');
         const tgFileId = isTgVideo ? post.content_link.split('TG_VID:')[1] : '';
@@ -696,13 +837,15 @@ app.get('/post/:slug', async (req, res) => {
         
         const tagsHtml = (post.tags ? post.tags.split(',') : ["Anime", "HD"]).map(t => `<span style="background: var(--btn-alt); padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); color: var(--meta);">#${t.trim()}</span>`).join('');
         const siteNotice = await getSiteNotice();
-        const mediaHeroHtml = post.media_type === 'video' ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>` : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg">`;
-
-        // 🚀 SEO Meta Tags Generate (Google Indexing er jonno)
-        const seoKeywords = post.tags ? post.tags : "watch anime free, watch movie free, hd streaming";
-        const seoDescription = `Watch ${post.title} in HD quality. Top streaming platform for ${seoKeywords}.`;
         
-        // Google Search Engine & Social Media (Facebook/Telegram) er jonno hidden tags
+        const mediaHeroHtml = post.media_type === 'video' 
+            ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>` 
+            : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg" ${isGiftCard ? 'style="object-fit: contain; background: white; padding: 20px;"' : ''}>`;
+
+        // SEO Meta Tags
+        const seoKeywords = post.tags ? post.tags : "watch anime free, free gift card";
+        const seoDescription = isGiftCard ? `Get your free ${post.title}. 100% working codes generated daily.` : `Watch ${post.title} in HD quality. Top streaming platform for ${seoKeywords}.`;
+        
         const dynamicMetaTags = `
             <meta name="keywords" content="${seoKeywords}">
             <meta name="description" content="${seoDescription}">
@@ -710,20 +853,20 @@ app.get('/post/:slug', async (req, res) => {
             <meta property="og:description" content="${seoDescription}">
         `;
 
+        // Bootlink Logic
+        const targetBootLink = isGiftCard ? link3 : bootLink1;
+
         res.send(`
-            ${getHeader(post.title, dynamicMetaTags, siteNotice)}
+            ${getHeader(post.title, dynamicMetaTags, siteNotice, isGiftCard ? 'giftcard' : 'anime')}
             <style>
                 .hero-bg { width: 100%; max-height: 480px; object-fit: cover; filter: brightness(0.4) cubic-bezier(0.4, 0, 0.2, 1); }
-                .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; background: linear-gradient(135deg, #ff6a00, #ff2200); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: 0 0 30px rgba(255,85,0,0.6); animation: pulseGlow 1.8s infinite; }
-                .msg-box { border-left: 4px solid var(--primary); background: rgba(255,107,0,0.04); padding: 16px; border-radius: 0 12px 12px 0; margin-bottom: 25px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-                .dl-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-                .dl-table th, .dl-table td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border); color: var(--text); }
-                .dl-table th { background: var(--btn-alt); color: var(--meta); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-                .dl-btn { background: #10b981; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 3px 8px rgba(16,185,129,0.2); }
+                .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; background: linear-gradient(135deg, ${isGiftCard ? '#10b981, #059669' : '#ff6a00, #ff2200'}); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: 0 0 30px ${isGiftCard ? 'rgba(16,185,129,0.6)' : 'rgba(255,85,0,0.6)'}; animation: pulseGlow 1.8s infinite; }
+                .msg-box { border-left: 4px solid ${isGiftCard ? '#10b981' : 'var(--primary)'}; background: ${isGiftCard ? 'rgba(16,185,129,0.04)' : 'rgba(255,107,0,0.04)'}; padding: 16px; border-radius: 0 12px 12px 0; margin-bottom: 25px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
                 
-                #videoPlayerContainer { display: none; width: 100%; background: #000; padding: 12px 0; }
+                #unlockedContentContainer { display: none; width: 100%; padding: 12px 0; }
                 video#mainVideoPlayer { width: 100%; max-height: 550px; outline: none; border: 3px solid var(--primary); border-radius: 12px; box-shadow: 0 10px 40px rgba(255, 85, 0, 0.25); }
-                @keyframes pulseGlow { 0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgba(255,85,0,0.7); } 70% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 0 15px rgba(255,85,0,0); } 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgba(255,85,0,0); } }
+                
+                @keyframes pulseGlow { 0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 ${isGiftCard ? 'rgba(16,185,129,0.7)' : 'rgba(255,85,0,0.7)'}; } 70% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 0 15px rgba(255,85,0,0); } 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 0 0 rgba(255,85,0,0); } }
                 
                 .share-btn { margin-left: 10px; background: var(--btn-alt); border: 1px solid var(--border); color: var(--text); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; cursor: pointer; }
                 .share-btn:hover { background: var(--card-hover); }
@@ -732,20 +875,28 @@ app.get('/post/:slug', async (req, res) => {
             <div class="container">
                 <div style="max-width: 900px; margin: 0 auto; background: var(--card-bg); border-radius: 20px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.2);">
                     
-                    <div id="heroContainer" style="position: relative; width: 100%; background: #000; border-bottom: 4px solid var(--primary);">
+                    <div id="heroContainer" style="position: relative; width: 100%; background: #000; border-bottom: 4px solid ${isGiftCard ? '#10b981' : 'var(--primary)'};">
                         ${mediaHeroHtml}
                         <div class="play-pulse" onclick="initiateAction()">
-                            <div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 24px solid white; margin-left: 6px;"></div>
+                            ${isGiftCard ? `<span style="color:white; font-size:24px; font-weight:900;">🎁</span>` : `<div style="width: 0; height: 0; border-top: 14px solid transparent; border-bottom: 14px solid transparent; border-left: 24px solid white; margin-left: 6px;"></div>`}
                         </div>
                     </div>
 
-                    <div id="videoPlayerContainer">
+                    <div id="unlockedContentContainer">
+                        ${isGiftCard ? `
+                        <div style="text-align: center; padding: 40px; background: #1a1a24; border-radius: 12px; border: 2px dashed #10b981; margin: 20px;">
+                            <h2 style="color: #10b981; margin-top: 0; font-size:24px;">🎉 Success! Here is your Target Code:</h2>
+                            <div style="font-size: 32px; font-weight: 900; color: #fff; letter-spacing: 2px; padding: 20px; background: #000; border-radius: 8px; user-select: all; word-break: break-all; border: 1px solid #10b981; box-shadow: 0 0 20px rgba(16,185,129,0.2);">${post.content_link}</div>
+                            <p style="color: var(--meta); font-size: 14px; margin-bottom: 0; margin-top: 15px;">Copy this code and redeem it on the official platform.</p>
+                        </div>
+                        ` : `
                         <div style="padding: 0 12px 12px 12px;">
                             <video id="mainVideoPlayer" controls controlsList="nodownload">
                                 <source src="${videoStreamUrl}" type="video/mp4">
                                 Your browser infrastructure layout does not support standard HTML streaming layout elements.
                             </video>
                         </div>
+                        `}
                     </div>
 
                     <div style="padding: 30px;">
@@ -757,64 +908,68 @@ app.get('/post/:slug', async (req, res) => {
                         
                         <div style="display: flex; gap: 12px; margin-bottom: 24px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
                             <span style="background: var(--btn-alt); padding: 6px 14px; border-radius: 30px; font-weight: bold; border: 1px solid var(--border);">Views: ${uiFakeViews}</span>
-                            <span style="color: #10b981; font-weight: bold; background: rgba(16,185,129,0.08); padding: 4px 10px; border-radius: 6px;">Match Rate: 94%</span>
+                            <span style="color: #10b981; font-weight: bold; background: rgba(16,185,129,0.08); padding: 4px 10px; border-radius: 6px;">Match Rate: 99%</span>
                             <span style="color: #ffb800; font-weight: bold; background: rgba(255,184,0,0.08); padding: 4px 10px; border-radius: 6px;">Rating: ${getFakeRating(post.id)}</span>
                         </div>
 
                         <div id="statusBox" class="msg-box">
                             <p style="color: var(--text); margin: 0; font-size: 14px; font-weight: 600; line-height: 1.5;" id="statusText">
-                                Verification Lock Active: Please interact with our sponsorship portal for 30 seconds to authenticate structural streaming pathways.<br>
-                                <span style="font-size: 12px; color: var(--meta); font-weight: normal; margin-top: 6px; display: inline-block;">Stream Synchronization Node: ${today}</span>
+                                Verification Lock Active: Please interact with our sponsorship portal for 30 seconds to authenticate your request.<br>
+                                <span style="font-size: 12px; color: var(--meta); font-weight: normal; margin-top: 6px; display: inline-block;">Synchronization Node: ${today}</span>
                             </p>
                         </div>
                         
                         <div id="btnContainer" style="margin-bottom: 30px;">
-                            <button id="mainBtn" onclick="initiateAction()" style="width: 100%; padding: 16px; background: linear-gradient(135deg, #ff6a00, #ff3300); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px rgba(255,85,0,0.3); transition: transform 0.2s ease;">
-                                Unseal and Initiate Stream Link
+                            <button id="mainBtn" onclick="initiateAction()" style="width: 100%; padding: 16px; background: linear-gradient(135deg, ${isGiftCard ? '#10b981, #059669' : '#ff6a00, #ff3300'}); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px ${isGiftCard ? 'rgba(16,185,129,0.3)' : 'rgba(255,85,0,0.3)'}; transition: transform 0.2s ease;">
+                                ${isGiftCard ? "Unseal Gift Card Code" : "Unseal and Initiate Stream Link"}
                             </button>
                         </div>
 
                         <div style="margin: 30px auto 10px auto; text-align: center;">${AD_NATIVE_BANNER}</div>
 
+                        ${!isGiftCard ? `
                         <h3 style="margin-top: 25px; font-size: 18px; font-weight: 800; border-bottom: 2px solid var(--border); padding-bottom: 12px; letter-spacing: -0.2px;">High-Speed Dedicated Cloud Download Grid</h3>
-                        <table class="dl-table">
-                            <thead><tr><th>Output Quality</th><th>Cloud Node Allocation</th><th>Target Link Trigger</th></tr></thead>
+                        <table class="dl-table" style="width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);">
+                            <thead><tr><th style="background: var(--btn-alt); color: var(--meta); font-weight: 700; font-size: 13px; padding: 14px 18px; text-transform: uppercase;">Output Quality</th><th style="background: var(--btn-alt); color: var(--meta); font-weight: 700; font-size: 13px; padding: 14px 18px; text-transform: uppercase;">Cloud Node</th><th style="background: var(--btn-alt); color: var(--meta); font-weight: 700; font-size: 13px; padding: 14px 18px; text-transform: uppercase;">Action</th></tr></thead>
                             <tbody>
                                 <tr>
-                                    <td><strong style="color: var(--primary);">4K Bluray Original (Direct)</strong></td>
-                                    <td>VIP HighSpeed Cluster</td>
-                                    <td><button onclick="window.location.href='${videoDownloadUrl}'" class="dl-btn">Download Now</button></td>
+                                    <td style="padding: 14px 18px; border-bottom: 1px solid var(--border); color: var(--text);"><strong style="color: var(--primary);">4K Bluray Original</strong></td>
+                                    <td style="padding: 14px 18px; border-bottom: 1px solid var(--border); color: var(--text);">VIP HighSpeed</td>
+                                    <td style="padding: 14px 18px; border-bottom: 1px solid var(--border);"><button onclick="window.location.href='${videoDownloadUrl}'" style="background: #10b981; color: white; padding: 8px 16px; border-radius: 8px; font-weight: 700; border: none; cursor: pointer;">Download</button></td>
                                 </tr>
                             </tbody>
                         </table>
+                        ` : ''}
                     </div>
                 </div>
                 
                 <div style="margin-top: 50px;">
-                    <h3 style="font-size: 20px; font-weight: 850; color: var(--text); border-left: 5px solid var(--primary); padding-left: 14px; margin-bottom: 24px;">Recommended Synchronization Grid Entries</h3>
-                    <div class="grid">${renderCards(recResult.rows)}</div>
+                    <h3 style="font-size: 20px; font-weight: 850; color: var(--text); border-left: 5px solid ${isGiftCard ? '#10b981' : 'var(--primary)'}; padding-left: 14px; margin-bottom: 24px;">Recommended ${isGiftCard ? 'Gift Cards' : 'Anime Categories'}</h3>
+                    <div class="grid">${renderCards(recResult.rows, isGiftCard)}</div>
                 </div>
             </div>
 
-            ${getBootLogic()}
+            ${getBootLogic(targetBootLink)}
 
             <script>
                 const slug = '${post.slug ? post.slug : post.id}';
                 const adUrl = '/out/' + slug + '?type=ad';
                 const movieUrl = '/out/' + slug + '?type=content';
                 const isUploadedVideo = ${isTgVideo};
+                const isGiftCardTarget = ${isGiftCard};
 
                 function unlockVideo() {
-                    if (isUploadedVideo) {
+                    if (isUploadedVideo || isGiftCardTarget) {
                         document.getElementById('heroContainer').style.display = 'none';
                         document.getElementById('statusBox').style.display = 'none';
                         document.getElementById('btnContainer').style.display = 'none';
                         
-                        var playerContainer = document.getElementById('videoPlayerContainer');
-                        playerContainer.style.display = 'block';
+                        document.getElementById('unlockedContentContainer').style.display = 'block';
                         
-                        var player = document.getElementById('mainVideoPlayer');
-                        player.play();
+                        if (!isGiftCardTarget) {
+                            var player = document.getElementById('mainVideoPlayer');
+                            player.play();
+                        }
                     } else {
                         window.location.href = movieUrl;
                     }
@@ -829,15 +984,15 @@ app.get('/post/:slug', async (req, res) => {
                         const timePassed = (Date.now() - parseInt(adStatus)) / 1000;
                         if (timePassed >= 30) {
                             localStorage.setItem('ad_status_' + slug, 'unlocked');
-                            if(btnText) btnText.innerText = "[Success] Pipeline Authenticated. Start Streaming";
-                            if(statusText) statusText.innerHTML = "<span style='color: #10b981; font-weight:bold;'>Verification successfully computed. Access parameters granted. Click structural activation target above.</span>";
+                            if(btnText) btnText.innerText = "[Success] Pipeline Authenticated. Access Granted.";
+                            if(statusText) statusText.innerHTML = "<span style='color: #10b981; font-weight:bold;'>Verification successfully computed. Access parameters granted. Click activation button above.</span>";
                         } else {
-                            if(btnText) btnText.innerText = "Background background synchronizing telemetry data...";
+                            if(btnText) btnText.innerText = "Synchronizing telemetry data background...";
                         }
                     } else if (adStatus === 'unlocked') {
                         if(btnText) btnText.innerText = "[Success] Active Authorization Unlocked";
                         if(statusText) statusText.innerHTML = "<span style='color: #10b981; font-weight:bold;'>Data bridge completely deployed. System active.</span>";
-                        if (isUploadedVideo) { unlockVideo(); }
+                        if (isUploadedVideo || isGiftCardTarget) { unlockVideo(); }
                     }
                 }
 
@@ -849,7 +1004,7 @@ app.get('/post/:slug', async (req, res) => {
 
                     if (!adStatus) {
                         localStorage.setItem('ad_status_' + slug, Date.now());
-                        document.getElementById('statusText').innerHTML = "<span style='color: var(--primary); font-weight:bold;'>Sponsor tab interface launched. Keeping stream telemetry synchronized... Do not close background targets.</span>";
+                        document.getElementById('statusText').innerHTML = "<span style='color: ${isGiftCard ? '#10b981' : 'var(--primary)'}; font-weight:bold;'>Sponsor tab interface launched. Keeping data telemetry synchronized... Do not close background targets.</span>";
                         window.open(adUrl, '_blank'); 
                         
                         const btnText = document.getElementById('mainBtn');
@@ -908,11 +1063,15 @@ app.get('/sitemap.xml', async (req, res) => {
     try {
         const result = await pool.query("SELECT slug FROM posts");
         
-        // Apnar upload kora static sitemap er uporer onghsho (Main pages)
+        // Static sitemap for Main pages
         let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
   <url>
     <loc>https://watchmovie.pro/</loc>
+    <priority>1.00</priority>
+  </url>
+  <url>
+    <loc>https://watchmovie.pro/giftcards</loc>
     <priority>1.00</priority>
   </url>
   <url>
@@ -922,13 +1081,9 @@ app.get('/sitemap.xml', async (req, res) => {
   <url>
     <loc>https://watchmovie.pro/?sort=views</loc>
     <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://watchmovie.pro/?sort=oldest</loc>
-    <priority>0.80</priority>
   </url>`;
 
-        // Database theke automatic asha post gulor link (Dynamic pages)
+        // Database to dynamic pages
         result.rows.forEach(p => {
             xml += `
   <url>
