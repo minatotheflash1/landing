@@ -523,7 +523,6 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "") => `
         </form>
     </div>
 
-    <!-- Adblocker Detection Logic -->
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             var bait = document.createElement('div');
@@ -679,12 +678,25 @@ app.get('/post/:slug', async (req, res) => {
 
         const uiFakeViews = formatFakeViews(post.views, post.id);
         const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        
         const tagsHtml = (post.tags ? post.tags.split(',') : ["Anime", "HD"]).map(t => `<span style="background: var(--btn-alt); padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); color: var(--meta);">#${t.trim()}</span>`).join('');
         const siteNotice = await getSiteNotice();
         const mediaHeroHtml = post.media_type === 'video' ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>` : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg">`;
 
+        // 🚀 SEO Meta Tags Generate (Google Indexing er jonno)
+        const seoKeywords = post.tags ? post.tags : "watch anime free, watch movie free, hd streaming";
+        const seoDescription = `Watch ${post.title} in HD quality. Top streaming platform for ${seoKeywords}.`;
+        
+        // Google Search Engine & Social Media (Facebook/Telegram) er jonno hidden tags
+        const dynamicMetaTags = `
+            <meta name="keywords" content="${seoKeywords}">
+            <meta name="description" content="${seoDescription}">
+            <meta property="og:title" content="${post.title}">
+            <meta property="og:description" content="${seoDescription}">
+        `;
+
         res.send(`
-            ${getHeader(post.title, "", siteNotice)}
+            ${getHeader(post.title, dynamicMetaTags, siteNotice)}
             <style>
                 .hero-bg { width: 100%; max-height: 480px; object-fit: cover; filter: brightness(0.4) cubic-bezier(0.4, 0, 0.2, 1); }
                 .play-pulse { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; background: linear-gradient(135deg, #ff6a00, #ff2200); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: 0 0 30px rgba(255,85,0,0.6); animation: pulseGlow 1.8s infinite; }
