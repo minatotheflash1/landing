@@ -71,7 +71,7 @@ const setupDB = async () => {
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;").catch(()=>{"ignore"});
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tags TEXT;").catch(()=>{"ignore"});
         await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'photo';").catch(()=>{"ignore"});
-        await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'anime';").catch(()=>{"ignore"}); // added new column
+        await pool.query("ALTER TABLE posts ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'anime';").catch(()=>{"ignore"});
         
         await pool.query("INSERT INTO settings (key, value) VALUES ('total_visits', '0') ON CONFLICT DO NOTHING").catch(()=>{"ignore"});
         
@@ -238,14 +238,16 @@ bot.on('message', async (msg) => {
     else if (state.step === 'AWAITING_TITLE') {
         let inputTitle = msg.text.trim();
         const isAuto = inputTitle.toLowerCase() === 'auto';
-        bot.sendMessage(chatId, "[System] DeepSeek AI is processing SEO structural keywords and titles...", { parse_mode: "Markdown" });
+        bot.sendMessage(chatId, "[System] DeepSeek AI is processing High CPM SEO keywords and titles...", { parse_mode: "Markdown" });
 
         try {
             let finalTitle = inputTitle;
-            let generatedTags = "Anime, HD, Subbed, Dubbed, Otaku"; 
+            let generatedTags = "Anime, HD, Subbed, Dubbed, Watch Online, High Quality"; 
+            
+            // 🔥 High CPM DeepSeek Prompt
             const aiResponse = await axios.post('https://api.deepseek.com/v1/chat/completions', {
                 model: "deepseek-chat",
-                messages: [{ role: "user", content: `I am adding an anime or movie to my site. Generate a JSON object containing: 1. "title": A catchy streaming headline (max 6 words). Only generate this if I say 'auto', otherwise return "${inputTitle}". 2. "tags": 5 highly searched comma-separated SEO keywords. Respond strictly in raw JSON without any markdown formatting. Example: {"title": "The Title", "tags": "Tag1, Tag2, Tag3"}` }]
+                messages: [{ role: "user", content: `I am adding an anime/movie to my site. Generate a JSON object: 1. "title": Catchy streaming headline (max 6 words). Only generate if I say 'auto', otherwise return "${inputTitle}". 2. "tags": 10 Highly profitable (High CPM), high search volume SEO keywords separated by commas (mix anime terms with profitable ad terms). Respond strictly in raw JSON without markdown. Example: {"title": "The Title", "tags": "Tag1, Tag2"}` }]
             }, { headers: { 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}` } });
 
             try {
@@ -260,7 +262,10 @@ bot.on('message', async (msg) => {
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            const statusReport = `[Anime Deployment Successful]\nHeadline: ${finalTitle}\nTags: ${generatedTags}\nLink:\n${process.env.WEBSITE_URL}/post/${slug}`;
+            // 🔥 Proper GSC indexing link output
+            const finalUrl = `https://watchmovie.pro/post/${slug}`;
+            const statusReport = `[Anime Deployment Successful]\nHeadline: ${finalTitle}\n\n🔗 *Copy this exact link for Google Search Console (URL Inspection):*\n${finalUrl}`;
+            
             bot.sendMessage(chatId, statusReport, { parse_mode: "Markdown" });
             delete userStates[chatId]; sendMainMenu(chatId);
         } catch (error) {
@@ -270,9 +275,7 @@ bot.on('message', async (msg) => {
     
     // Giftcard Upload Flow
     else if (state.step === 'AWAITING_GC_CODES') {
-        // split by newline and remove empty ones
         state.codes = msg.text.trim().split('\n').map(c => c.trim()).filter(c => c !== '');
-        
         if (state.codes.length === 0) return bot.sendMessage(chatId, "Code khuje pawa jayni. Abar try korun:");
         
         state.step = 'AWAITING_GC_AD_LINK';
@@ -284,8 +287,10 @@ bot.on('message', async (msg) => {
         
         try {
             const icon = gcIcons[state.platform] || "https://cdn-icons-png.flaticon.com/512/2651/2651082.png";
-            const tags = `${state.platform}, Giftcard, Free, Code, Reward, Topup, Generator`;
+            // 🔥 High CPM Tags hardcoded for giftcards
+            const tags = `${state.platform}, Giftcard, Free, Make Money Online, Crypto, Insurance, Code, Reward, Topup, Generator`;
             
+            let generatedLinks = [];
             for (let i = 0; i < state.codes.length; i++) {
                 const codeText = state.codes[i];
                 const slug = generateSlug();
@@ -295,9 +300,14 @@ bot.on('message', async (msg) => {
                     "INSERT INTO posts (slug, title, thumbnail, ad_link, content_link, tags, media_type, category) VALUES ($1, $2, $3, $4, $5, $6, 'photo', 'giftcard')",
                     [slug, title, icon, adLink, codeText, tags]
                 );
+                generatedLinks.push(`https://watchmovie.pro/post/${slug}`);
             }
             
-            bot.sendMessage(chatId, `[Success] ${state.codes.length} ta Giftcard post ek-sathe live kora hoyeche!\n\nLink: ${process.env.WEBSITE_URL}/giftcards`, { parse_mode: "Markdown" });
+            // Format GSC links for output
+            let linksMsg = generatedLinks.slice(0, 10).join("\n");
+            if(generatedLinks.length > 10) linksMsg += `\n...and ${generatedLinks.length - 10} more links.`;
+
+            bot.sendMessage(chatId, `[Success] ${state.codes.length} ta Giftcard post ek-sathe live kora hoyeche!\n\n🔗 *Copy links below for Google Search Console (URL Inspection):*\n${linksMsg}`, { parse_mode: "Markdown" });
             delete userStates[chatId]; sendMainMenu(chatId);
         } catch (err) {
             bot.sendMessage(chatId, "[Error] Database e insert korte somosya hoyeche."); delete userStates[chatId];
@@ -443,7 +453,6 @@ const formatFakeViews = (realViews, postId) => {
 
 const getFakeRating = (postId) => (4.3 + (((postId ? parseInt(postId) : 1) * 31) % 7) / 10).toFixed(1);
 
-// Boot logic ekhon dynamic, argument hisebe link ney
 const getBootLogic = (targetLink) => {
     return `
     <script>
@@ -524,8 +533,19 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime"
         .logo-part1 { background: linear-gradient(135deg, #ff7700, #ff3300); color: #fff; padding: 4px 10px; border-radius: 8px; margin-right: 5px; box-shadow: 0 4px 12px rgba(255,51,0,0.3); }
         .logo-part2 { color: var(--text); font-style: italic; }
         
-        .giftcard-btn { background: linear-gradient(135deg, #10b981, #059669); color: #fff; padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 13px; text-decoration: none; margin-left: 15px; border: 1px solid #059669; box-shadow: 0 4px 10px rgba(16,185,129,0.3); display: flex; align-items: center; gap: 5px;}
-        .giftcard-btn:hover { background: linear-gradient(135deg, #059669, #047857); transform: translateY(-2px); }
+        .giftcard-btn { 
+            background: linear-gradient(135deg, #10b981, #059669); color: #fff; padding: 8px 18px; border-radius: 25px; 
+            font-weight: 800; font-size: 14px; text-decoration: none; margin-left: 15px; 
+            border: 2px solid rgba(16,185,129,0.5); box-shadow: 0 0 15px rgba(16,185,129,0.4); 
+            display: flex; align-items: center; gap: 6px; animation: pulseBtn 2s infinite; 
+        }
+        .giftcard-btn:hover { background: linear-gradient(135deg, #059669, #047857); transform: scale(1.02); }
+        
+        @keyframes pulseBtn {
+            0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
 
         .nav-icons { display: flex; gap: 16px; align-items: center; margin-left: auto; margin-right: 15px; }
         .theme-toggle { font-size: 14px; font-weight: bold; cursor: pointer; background: var(--btn-alt); padding: 8px 12px; border-radius: 20px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text); }
@@ -571,11 +591,12 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime"
         
         @media (max-width: 768px) {
             .nav { flex-direction: column; gap: 14px; padding: 16px; }
-            .search { max-width: 100%; }
+            .nav-logo { font-size: 22px; width: 100%; justify-content: center; }
+            .search { max-width: 100%; width: 100%; }
             .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .nav-icons { position: relative; justify-content: space-between; width: 100%; margin-top: 10px; }
+            .nav-icons { width: 100%; justify-content: space-between; margin: 0; }
             .container { padding: 14px; }
-            .giftcard-btn { margin-left: 0; width: 100%; justify-content: center; margin-bottom: 10px; }
+            .giftcard-btn { margin-left: 0; width: 100%; justify-content: center; font-size: 15px; padding: 10px; }
         }
     </style>
     <script>
@@ -607,7 +628,7 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime"
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             var bait = document.createElement('div');
-            bait.innerHTML = '&nbsp;';
+            bait.innerHTML = ' ';
             bait.className = 'pub_300x250 pub_300x250m pub_728x90 text-ad textAd text_ad text_ads text-ads text-ad-links';
             bait.style.position = 'absolute';
             bait.style.width = '10px';
@@ -668,6 +689,10 @@ const renderCards = (posts, isGiftcard = false) => {
         const metaLabel = isGiftcard ? "GIFTCARD" : "SUB / DUB";
         const actionLabel = isGiftcard ? "Unlock Code Now" : "Watch Full Quality";
 
+        const viewsOrFreshHtml = isGiftcard 
+            ? `<span style="color: #10b981; font-weight: 800; display: flex; align-items: center; gap: 4px;">🔥 Fresh New</span>`
+            : `<span>Views: ${fakeViews}</span>`;
+
         return `
         <div class="card" onclick="window.location.href='/post/${post.slug ? post.slug : post.id}'">
             <div class="badge" ${isGiftcard ? 'style="background: #10b981; border: none;"' : ''}>${badgeLabel}</div>
@@ -675,7 +700,7 @@ const renderCards = (posts, isGiftcard = false) => {
             <div class="card-img-wrapper" ${isGiftcard ? 'style="background: #fff; padding: 20px;"' : ''}>${mediaHtml}</div>
             <div class="card-content">
                 <div class="card-title">${post.title}</div>
-                <div class="card-meta"><span>Views: ${fakeViews}</span><span style="background: var(--btn-alt); padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid var(--border); ${isGiftcard ? 'color:#10b981; border-color:#10b981;' : ''}">${metaLabel}</span></div>
+                <div class="card-meta">${viewsOrFreshHtml}<span style="background: var(--btn-alt); padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid var(--border); ${isGiftcard ? 'color:#10b981; border-color:#10b981;' : ''}">${metaLabel}</span></div>
                 <div class="card-play-label" ${isGiftcard ? 'style="color: #10b981;"' : ''}>${actionLabel}</div>
             </div>
         </div>
@@ -683,7 +708,6 @@ const renderCards = (posts, isGiftcard = false) => {
     }).join('');
 };
 
-// Main Route (AnimeHub)
 app.get('/', async (req, res) => {
     const searchQuery = req.query.q;
     const sortParam = req.query.sort || 'latest';
@@ -699,7 +723,6 @@ app.get('/', async (req, res) => {
         let result;
         let totalCountRes;
 
-        // Search in title OR tags for smart search
         if (searchQuery) {
             result = await pool.query(`SELECT * FROM posts WHERE category = 'anime' AND (title ILIKE $1 OR tags ILIKE $1) ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
             totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'anime' AND (title ILIKE $1 OR tags ILIKE $1)", [`%${searchQuery}%`]);
@@ -711,7 +734,7 @@ app.get('/', async (req, res) => {
         const totalItems = parseInt(totalCountRes.rows[0].count);
         const totalPages = Math.ceil(totalItems / limit);
 
-        const bootScript = getBootLogic(bootLink1); // Prothom Bootlink
+        const bootScript = getBootLogic(bootLink1);
         const siteNotice = await getSiteNotice();
         const metaTags = `<meta name="description" content="Watch the latest trending anime and movies online for free in 1080p and 4K UHD.">`;
 
@@ -745,7 +768,6 @@ app.get('/', async (req, res) => {
     } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// Magic Giftcard Route
 app.get('/giftcards', async (req, res) => {
     const searchQuery = req.query.q;
     const sortParam = req.query.sort || 'latest';
@@ -761,7 +783,6 @@ app.get('/giftcards', async (req, res) => {
         let result;
         let totalCountRes;
 
-        // Search in title OR tags
         if (searchQuery) {
             result = await pool.query(`SELECT * FROM posts WHERE category = 'giftcard' AND (title ILIKE $1 OR tags ILIKE $1) ${orderClause} LIMIT $2 OFFSET $3`, [`%${searchQuery}%`, limit, offset]);
             totalCountRes = await pool.query("SELECT COUNT(*) FROM posts WHERE category = 'giftcard' AND (title ILIKE $1 OR tags ILIKE $1)", [`%${searchQuery}%`]);
@@ -773,7 +794,7 @@ app.get('/giftcards', async (req, res) => {
         const totalItems = parseInt(totalCountRes.rows[0].count);
         const totalPages = Math.ceil(totalItems / limit);
 
-        const bootScript = getBootLogic(link3); // Ditiyo Bootlink
+        const bootScript = getBootLogic(link3);
         const siteNotice = await getSiteNotice();
         const metaTags = `<meta name="description" content="Get 100% working free gift card codes for Google Play, Amazon, and more at MagicGiftcardZone.">`;
 
@@ -811,7 +832,6 @@ app.get('/giftcards', async (req, res) => {
     } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// Single Post Page (Handles both Anime and Giftcards)
 app.get('/post/:slug', async (req, res) => {
     const { slug } = req.params;
     let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -842,7 +862,6 @@ app.get('/post/:slug', async (req, res) => {
             ? `<video src="${getImgSrc(post.thumbnail)}" class="hero-bg" autoplay muted loop playsinline></video>` 
             : `<img src="${getImgSrc(post.thumbnail)}" class="hero-bg" ${isGiftCard ? 'style="object-fit: contain; background: white; padding: 20px;"' : ''}>`;
 
-        // SEO Meta Tags
         const seoKeywords = post.tags ? post.tags : "watch anime free, free gift card";
         const seoDescription = isGiftCard ? `Get your free ${post.title}. 100% working codes generated daily.` : `Watch ${post.title} in HD quality. Top streaming platform for ${seoKeywords}.`;
         
@@ -853,8 +872,11 @@ app.get('/post/:slug', async (req, res) => {
             <meta property="og:description" content="${seoDescription}">
         `;
 
-        // Bootlink Logic
         const targetBootLink = isGiftCard ? link3 : bootLink1;
+
+        const viewsStatHtml = isGiftCard 
+            ? `<span style="background: rgba(16,185,129,0.1); color: #10b981; padding: 6px 14px; border-radius: 30px; font-weight: bold; border: 1px solid rgba(16,185,129,0.3);">🔥 Fresh New Code</span>`
+            : `<span style="background: var(--btn-alt); padding: 6px 14px; border-radius: 30px; font-weight: bold; border: 1px solid var(--border);">Views: ${uiFakeViews}</span>`;
 
         res.send(`
             ${getHeader(post.title, dynamicMetaTags, siteNotice, isGiftCard ? 'giftcard' : 'anime')}
@@ -907,7 +929,7 @@ app.get('/post/:slug', async (req, res) => {
                         </div>
                         
                         <div style="display: flex; gap: 12px; margin-bottom: 24px; color: var(--meta); font-size: 13px; flex-wrap: wrap; align-items: center;">
-                            <span style="background: var(--btn-alt); padding: 6px 14px; border-radius: 30px; font-weight: bold; border: 1px solid var(--border);">Views: ${uiFakeViews}</span>
+                            ${viewsStatHtml}
                             <span style="color: #10b981; font-weight: bold; background: rgba(16,185,129,0.08); padding: 4px 10px; border-radius: 6px;">Match Rate: 99%</span>
                             <span style="color: #ffb800; font-weight: bold; background: rgba(255,184,0,0.08); padding: 4px 10px; border-radius: 6px;">Rating: ${getFakeRating(post.id)}</span>
                         </div>
@@ -943,8 +965,10 @@ app.get('/post/:slug', async (req, res) => {
                     </div>
                 </div>
                 
-                <div style="margin-top: 50px;">
-                    <h3 style="font-size: 20px; font-weight: 850; color: var(--text); border-left: 5px solid ${isGiftCard ? '#10b981' : 'var(--primary)'}; padding-left: 14px; margin-bottom: 24px;">Recommended ${isGiftCard ? 'Gift Cards' : 'Anime Categories'}</h3>
+                <div style="margin-top: 50px; background: var(--card-bg); padding: 25px; border-radius: 20px; border: 1px solid var(--border);">
+                    <h3 style="font-size: 22px; font-weight: 900; color: var(--text); border-left: 5px solid ${isGiftCard ? '#10b981' : 'var(--primary)'}; padding-left: 14px; margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
+                        🔥 You May Also Like / More ${isGiftCard ? 'Gift Cards' : 'Anime'}
+                    </h3>
                     <div class="grid">${renderCards(recResult.rows, isGiftCard)}</div>
                 </div>
             </div>
@@ -1062,43 +1086,17 @@ app.get('/out/:slug', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => {
     try {
         const result = await pool.query("SELECT slug FROM posts");
-        
-        // Static sitemap for Main pages
         let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
-  <url>
-    <loc>https://watchmovie.pro/</loc>
-    <priority>1.00</priority>
-  </url>
-  <url>
-    <loc>https://watchmovie.pro/giftcards</loc>
-    <priority>1.00</priority>
-  </url>
-  <url>
-    <loc>https://watchmovie.pro/?sort=latest</loc>
-    <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://watchmovie.pro/?sort=views</loc>
-    <priority>0.80</priority>
-  </url>`;
+  <url><loc>https://watchmovie.pro/</loc><priority>1.00</priority></url>
+  <url><loc>https://watchmovie.pro/giftcards</loc><priority>1.00</priority></url>
+  <url><loc>https://watchmovie.pro/?sort=latest</loc><priority>0.80</priority></url>
+  <url><loc>https://watchmovie.pro/?sort=views</loc><priority>0.80</priority></url>`;
 
-        // Database to dynamic pages
-        result.rows.forEach(p => {
-            xml += `
-  <url>
-    <loc>https://watchmovie.pro/post/${p.slug}</loc>
-    <priority>0.80</priority>
-  </url>`;
-        });
-
+        result.rows.forEach(p => { xml += `<url><loc>https://watchmovie.pro/post/${p.slug}</loc><priority>0.80</priority></url>`; });
         xml += '\n</urlset>';
-        
-        res.header('Content-Type', 'application/xml'); 
-        res.send(xml);
-    } catch (e) { 
-        res.status(500).send("Sitemap pipeline structural failure"); 
-    }
+        res.header('Content-Type', 'application/xml'); res.send(xml);
+    } catch (e) { res.status(500).send("Sitemap pipeline structural failure"); }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('System operational node successfully initialized on target port configuration.'));
+app.listen(process.env.PORT || 3000, () => console.log('System operational node successfully initialized.'));
