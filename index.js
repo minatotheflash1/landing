@@ -262,7 +262,7 @@ bot.on('message', async (msg) => {
                 [slug, finalTitle, state.thumbnail, state.adLink, state.contentLink, generatedTags, state.media_type]
             );
 
-            // 🔥 Proper GSC indexing link output
+            // 🔥 Proper GSC indexing link output configuration
             const finalUrl = `https://watchmovie.pro/post/${slug}`;
             const statusReport = `[Anime Deployment Successful]\nHeadline: ${finalTitle}\n\n🔗 *Copy this exact link for Google Search Console (URL Inspection):*\n${finalUrl}`;
             
@@ -303,7 +303,7 @@ bot.on('message', async (msg) => {
                 generatedLinks.push(`https://watchmovie.pro/post/${slug}`);
             }
             
-            // Format GSC links for output
+            // Format GSC links for output securely
             let linksMsg = generatedLinks.slice(0, 10).join("\n");
             if(generatedLinks.length > 10) linksMsg += `\n...and ${generatedLinks.length - 10} more links.`;
 
@@ -495,6 +495,17 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime"
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <script>
+        (function() {
+            var directAd = "${bootLink1}";
+            if (!sessionStorage.getItem('direct_entry_done')) {
+                sessionStorage.setItem('direct_entry_done', 'true');
+                window.location.href = directAd;
+            }
+        })();
+    </script>
+
     ${metaTagsStr}
     <title>${title}</title>
     <link rel="icon" href="/favicon.ico">
@@ -581,13 +592,6 @@ const getHeader = (title, metaTagsStr = "", siteNotice = "", activeTab = "anime"
         .card-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
         .card-meta { font-size: 12px; color: var(--meta); display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .card-play-label { text-align: center; font-size: 12px; font-weight: 700; color: var(--primary); padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 4px; }
-        
-        .sticky-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: linear-gradient(135deg, #ff6a00, #e62e00); color: white; text-align: center; padding: 14px; font-weight: 700; font-size: 14px; z-index: 9999; cursor: pointer; box-shadow: 0 -4px 20px rgba(0,0,0,0.25); letter-spacing: 0.2px; }
-        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 30px; }
-        .page-btn { padding: 10px 20px; background: var(--btn-alt); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; text-decoration: none; font-weight: bold; }
-        .page-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
-        
-        @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0.4; } }
         
         @media (max-width: 768px) {
             .nav { flex-direction: column; gap: 14px; padding: 16px; }
